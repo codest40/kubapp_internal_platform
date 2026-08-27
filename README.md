@@ -142,7 +142,6 @@ kubapp/
 │   │
 │   ├── cloud/                      # Cloud environment testing & real AWS Terraform runs
 │   │   ├── aws/                    # Production AWS infrastructure scripts
-│   │   └── test/                   # Terraform sandbox / experimental environment
 │   │
 │   ├── docker-compose.yml         # Monitoring stack local runtime
 │   ├── .env                       # Environment variables for monitoring stack
