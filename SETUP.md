@@ -18,7 +18,7 @@ Manual GitHub App
 setup.sh
   │
   ▼
-activate.sh
+scripts/activate.sh
   │
   ▼
 Push to GitHub
@@ -43,17 +43,7 @@ to determine the project root.
 
 Create `setup.env` at the **project root**.
 
-Use the project configuration template if one is provided:
-
-```bash
-cp setup.env.example setup.env
-```
-
-Edit the configuration:
-
-```bash
-nano setup.env
-```
+Use the project configuration template provided below:
 
 Provide the required AWS, GitHub, repository, and other project configuration
 values expected by `setup_functions.sh`.
@@ -61,8 +51,7 @@ values expected by `setup_functions.sh`.
 `setup.env` is the main user-provided configuration file for the initial
 KubApp setup.
 
-Do not commit `setup.env` if it contains credentials, tokens, secrets, or
-other sensitive configuration.
+Do not commit `setup.env` if sensitive configuration.
 
 ## 3. Create the GitHub App Manually
 
@@ -200,7 +189,7 @@ After `setup.sh` completes, run:
 bash scripts/activate.sh
 ```
 
-`activate.sh` performs the repository validation, activation and push.
+`scripts/activate.sh` performs the repository validation, activation and push.
 
 The intended sequence is therefore:
 
@@ -223,13 +212,13 @@ Once the repository has been pushed to GitHub, the GitHub Actions workflows
 provide the CI/CD control plane. Most wokflows run with workflow_dispatch
 and manually activated. Core workflows except **terraform.yml** also run 
 with workkflow_call sourced from pipeline entrypoint.
+Preferably, run **.github/workflows/terraform.yml** first to provision the infrastruture
 
-The main pipeline entry point is:
+Then the main pipeline entry point is:
 
 ```text
 .github/workflows/activate_pipeline.yml
 ```
-
 The pipeline can be started manually from GitHub Actions.
 
 Its available modes are:
