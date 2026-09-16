@@ -3,6 +3,7 @@
 ## Project Goals
 Kubapp aims to provide a simplified but production-oriented Kubernetes platform on AWS.
 Each Section of the project has its own readme file, so this is the outline.
+For configuring and initializing KubApp, see [SETUP.md](./SETUP.md).
 
 ## The project was built to:
 - Automate Kubernetes infrastructure provisioning and management
