@@ -8,11 +8,6 @@ data "aws_eks_cluster_auth" "this" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_route53_zone" "main" {
-  name         = var.main_domain
-  private_zone = false
-}
-
 
 ############################################
 # NETWORK
@@ -79,9 +74,10 @@ module "security" {
 # IAM 
 ############################################
 module "iam_core" {
-  source       = "./modules/iam-core"
-  cluster_name = local.cluster_name
-  account_id   = var.account_id
+  source          = "./modules/iam-core"
+  cluster_name    = local.cluster_name
+  account_id      = var.account_id
+  tf_state_bucket = local.tf_state_bucket
   tags = merge(local.common_tags, {
     resource-type = "iam"
     layer         = "identity"
@@ -97,7 +93,7 @@ module "iam_irsa" {
   region            = var.region
   oidc_provider_arn = module.eks.oidc_provider_arn
   oidc_provider_url = module.eks.oidc_provider_url
-  hosted_zone_id    = data.aws_route53_zone.main.zone_id
+  hosted_zone_id    = local.dns_zone_id
   account_id        = data.aws_caller_identity.current.account_id
 
   tags = merge(local.common_tags, {
@@ -191,7 +187,7 @@ module "efs" {
 module "acm" {
   source  = "./modules/acm"
   domain  = local.main_domain
-  zone_id = data.aws_route53_zone.main.zone_id
+  zone_id = local.dns_zone_id
   tags = merge(local.common_tags, {
     resource-type = "acm"
     layer         = "routing"

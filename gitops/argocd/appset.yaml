@@ -7,7 +7,7 @@ metadata:
 spec:
   generators:
     - git:
-        repoURL: https://github.com/paragon40/kubapp.git
+        repoURL: "${REPO_URL}"
         revision: main
         directories:
           - path: gitops/envs/dev/apps/*
@@ -23,7 +23,7 @@ spec:
       project: default
 
       source:
-        repoURL: https://github.com/paragon40/kubapp.git
+        repoURL: "${REPO_URL}"
         targetRevision: main
 
         path: gitops/charts/apps

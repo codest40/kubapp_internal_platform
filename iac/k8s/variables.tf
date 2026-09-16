@@ -8,6 +8,10 @@ variable "env" {
   }
 }
 
+variable "account_id" {
+  type = string
+}
+
 variable "project" {
   type    = string
   default = "kubapp-project"
@@ -26,7 +30,4 @@ variable "alert_email_password" {
   sensitive = true
 }
 
-variable "main_domain" {
-  type = string
-}
 

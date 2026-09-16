@@ -24,3 +24,41 @@ variable "lock_table_name" {
   description = "DynamoDB table name for Terraform state locking"
   type        = string
 }
+
+variable "github_actions_role_name" {
+  description = "IAM role assumed by GitHub Actions"
+  type        = string
+  default     = "kubapp-github-actions"
+}
+
+variable "github_repository_owner" {
+  description = "GitHub repository owner"
+  type        = string
+}
+
+variable "github_repository_name" {
+  description = "GitHub repository name"
+  type        = string
+}
+
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub repository owner ID"
+  type        = string
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID"
+  type        = string
+}
+
+variable "github_branches" {
+  description = "GitHub branches allowed to assume the Terraform role"
+  type        = list(string)
+  default     = ["main"]
+}
+
+variable "github_environments" {
+  description = "GitHub environments allowed to assume the Terraform role"
+  type        = list(string)
+  default     = ["dev", "prod"]
+}

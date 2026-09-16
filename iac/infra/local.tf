@@ -1,8 +1,18 @@
-locals {
-  name_prefix  = "${var.project}-${var.env}"
-  cluster_name = "${var.cluster_name}-${var.env}"
+data "terraform_remote_state" "dns" {
+  backend = "s3"
+  config = {
+    bucket = "kubapp-dns-tf-state-${var.account_id}"
+    key    = "dns/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
 
-  main_domain = var.main_domain
+locals {
+  name_prefix     = "${var.project}-${var.env}"
+  cluster_name    = "${var.cluster_name}-${var.env}"
+  tf_state_bucket = "kubapp-tf-state-${var.account_id}"
+  main_domain     = data.terraform_remote_state.dns.outputs.domains[var.main_domain]["domain"]
+  dns_zone_id     = data.terraform_remote_state.dns.outputs.domains[var.main_domain]["zone_id"]
 
   # GLOBAL TRACE ID 
   trace_id = "${var.project}-${var.env}-${local.cluster_name}"

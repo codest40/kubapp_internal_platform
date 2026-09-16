@@ -9,6 +9,7 @@ executed consistently instead of relying on manual commands.
 ## Script Documentation
 
 Each script has a corresponding document under `scripts/docs/`.
+Ci scripts are under `scripts/ci/README`
 
 The documentation focuses on two things:
 
@@ -23,6 +24,7 @@ understand when and why each script should be used.
 | Category | Purpose |
 |---|---|
 | Activation | Run validation and GitOps preparation before changes are committed |
+| CI |  Continous Integration Scripts|
 | GitOps | Bootstrap and inspect GitOps resources |
 | AWS Cleanup | Remove AWS resources and investigate leftovers |
 | Kubernetes Cleanup | Clean cluster resources and namespaces |

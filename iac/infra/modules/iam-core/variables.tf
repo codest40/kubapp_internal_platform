@@ -3,6 +3,10 @@ variable "cluster_name" {
   type        = string
 }
 
+variable "tf_state_bucket" {
+  type = string
+}
+
 variable "account_id" {
   type = string
 }

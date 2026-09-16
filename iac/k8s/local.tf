@@ -1,9 +1,8 @@
 
 data "terraform_remote_state" "infra" {
   backend = "s3"
-
   config = {
-    bucket = "kubapp-tf-state"
+    bucket = "kubapp-tf-state-${var.account_id}"
     key    = "${var.env}/infra/terraform.tfstate"
     region = var.region
   }
@@ -17,7 +16,7 @@ locals {
   cluster_ca_cert        = data.terraform_remote_state.infra.outputs.cluster_ca_certificate
   lb_controller_role_arn = data.terraform_remote_state.infra.outputs.lb_controller_role_arn
   external_dns_role_arn  = data.terraform_remote_state.infra.outputs.external_dns_role_arn
-  main_domain            = try(data.terraform_remote_state.infra.outputs.main_domain, var.main_domain)
+  main_domain            = data.terraform_remote_state.infra.outputs.domain
   fluentbit_role_arn     = data.terraform_remote_state.infra.outputs.fluentbit_role_arn
   efs_role_arn           = data.terraform_remote_state.infra.outputs.efs_role_arn
   efs_id                 = data.terraform_remote_state.infra.outputs.efs_id
@@ -88,12 +87,4 @@ locals {
     #    }
   }
 }
-
-#data "terraform_remote_state" "infra" {
-#  backend = "local"
-
-#  config = {
-#    path = "../infra/terraform.tfstate"
-#  }
-#}
 

@@ -55,10 +55,6 @@ output "external_dns_role_arn" {
   value = module.iam_irsa.external_dns_role_arn
 }
 
-output "cert_arn" {
-  value = var.CERT_ARN
-}
-
 output "env" {
   value = var.env
 }
@@ -83,11 +79,11 @@ output "full_domain" {
   value = local.full_domain
 }
 
-output "main_domain" {
+output "domain" {
   value = local.main_domain
 }
 
-output "main_cert_arn" {
+output "cert_arn" {
   value = module.acm.acm_cert_arn
 }
 
@@ -98,4 +94,9 @@ output "sys_monitor_ec2_role_arn" {
 output "sys_monitor_instance_profile_name" {
   value = module.iam_core.sys_monitor_instance_profile_name
 }
+
+output "dns_zone_id" {
+  value = local.dns_zone_id
+}
+
 

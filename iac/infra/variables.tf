@@ -41,13 +41,8 @@ variable "kubernetes_v" {
   default     = "1.31"
 }
 
-variable "CERT_ARN" {
-  description = "ACM certificate ARN (test)"
-  type        = string
-}
-
 variable "main_domain" {
-  description = "Main domain automatically provisioned via acm (used in k8s)"
+  description = "Domain automatically provisioned used in k8s"
   type        = string
 }
 

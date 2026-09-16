@@ -1,7 +1,5 @@
-# envs/dev/backend.hcl
-bucket         = "kubapp-tf-state"
-key            = "dev/k8s/terraform.tfstate"
-region         = "us-east-1"
-#dynamodb_table = "kubapp-tf-db"
-use_lockfile  = true
-encrypt        = true
+bucket       = "kubapp-tf-state-259183055744"
+key          = "dev/k8s/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true
+encrypt      = true

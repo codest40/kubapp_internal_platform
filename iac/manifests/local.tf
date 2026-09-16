@@ -3,7 +3,7 @@ data "terraform_remote_state" "infra" {
   backend = "s3"
 
   config = {
-    bucket = "kubapp-tf-state"
+    bucket = "kubapp-tf-state-${var.account_id}"
     key    = "${var.env}/k8s/terraform.tfstate"
     region = var.region
   }

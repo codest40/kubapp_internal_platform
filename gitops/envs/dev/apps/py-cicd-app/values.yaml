@@ -1,0 +1,65 @@
+appName: py-cicd-app
+namespace: dev
+serviceAccount:
+  create: true
+  name: py-cicd-app-sa
+  roleArn: arn:aws:iam::259183055744:role/kubapp-dev-app-pods-role
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  interval: 30s
+replicaCount: 2
+image:
+  repository: paragon40/py_cicd_app
+  tag: 04203fe0c1-2026-09-07-13-51-18
+  pullPolicy: Always
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+env: {}
+securityContext:
+  pod:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  container:
+    runAsNonRoot: true
+    runAsUser: 10000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+probes:
+  readiness:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  liveness:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 15
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  cpu: 70
+  memory: 70
+meta:
+  staticFingerprint: ded78601a2dcd3f2a816f299cdf1fbb3b8e304e702bc17465d9c39d3900aeac5
+  generatedAt: 2026-09-16T11:48:46Z
+  source: build-pipeline
+labels:
+  compute: fargate

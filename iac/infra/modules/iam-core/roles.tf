@@ -197,8 +197,8 @@ resource "aws_iam_role_policy" "cross_account_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::kubapp-tf-state",
-          "arn:aws:s3:::kubapp-tf-state/*"
+          "arn:aws:s3:::${var.tf_state_bucket}",
+          "arn:aws:s3:::${var.tf_state_bucket}/*"
         ]
       },
 

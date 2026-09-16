@@ -17,3 +17,7 @@ variable "enable_alerts" {
   type    = bool
   default = true
 }
+
+variable "account_id" {
+  type = string
+}
