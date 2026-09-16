@@ -1,0 +1,99 @@
+name: Remove Orphan Apps
+
+on:
+  workflow_run:
+    workflows: ["Add New Apps", "Remove Service From Ingress"]
+    types:
+      - completed
+
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Optional manual override (leave empty for auto reconciliation)"
+        required: false
+      env:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+  push:
+    branches:
+      - main
+    paths:
+      - "gitops/envs/**"
+      - "gitops/ingress/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: using-commit
+  cancel-in-progress: false
+
+jobs:
+  remove:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      - name: Collect Supplied Values
+        run: |
+          echo "ENV=${{ github.event.inputs.env || 'dev' }}" >> "$GITHUB_ENV"
+          echo "SERVICES=${{ github.event.inputs.services }}" >> "$GITHUB_ENV"
+          if [[ -n "$SERVICES" ]]; then
+              echo "SERVICES: $SERVICES"
+          fi
+
+      - name: Safety checks
+        run: |
+          set -euo pipefail
+          echo "ENV=$ENV"
+
+          if [[ "${{ github.event_name }}" == "push" && "$ENV" == "prod" ]]; then
+            echo "❌ PROD automatic cleanup blocked on push"
+            exit 1
+          fi
+          if [[ "$ENV" == "prod" && -n "$SERVICES" ]]; then
+            echo "❌ PROD manual delete blocked"
+            exit 1
+          fi
+
+      - name: Remove orphan apps
+        env:
+          ENV: "${{ env.ENV }}"
+          SERVICES: "${{ env.SERVICES }}"
+        run: |
+          bash scripts/gitops/remove_orphan_apps.sh
+
+      - name: Check Ingress
+        run: |
+          set -euo pipefail
+          for f in gitops/ingress/*/values.yaml; do
+            yq '.' "$f" > /dev/null
+          done
+
+      - name: Validate GitOps
+        run: bash scripts/gitops/validate_gitops.sh
+
+      - name: Commit changes
+        run: |
+          set -euo pipefail
+
+          MSG="[REMOVE-APP]: orphan cleanup in $ENV"
+          bash scripts/extra/commit.sh "gitops/envs" "$MSG"
+
+      - name: Confirm Failure
+        if: failure()
+        run: echo "❌ Workflow failed"

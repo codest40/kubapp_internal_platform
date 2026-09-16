@@ -1,0 +1,105 @@
+name: Retrieve Stable Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
+
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
+
+    outputs:
+      stable_commit:
+        description: "Latest stable deployment commit"
+        value: ${{ jobs.get_stable.outputs.stable_commit }}
+
+      stable_tag:
+        description: "Latest stable deployment tag"
+        value: ${{ jobs.get_stable.outputs.stable_tag }}
+
+jobs:
+  get_stable:
+    runs-on: ubuntu-latest
+
+    outputs:
+      stable_commit: ${{ steps.stable.outputs.stable_commit }}
+      stable_tag: ${{ steps.stable.outputs.stable_tag }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read latest stable deployment
+        id: stable
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          set -euo pipefail
+
+          STATE_DIR="gitops/state"
+
+          echo "================================"
+          echo "LATEST STABLE DEPLOYMENT"
+          echo "================================"
+          echo "Environment: $ENV"
+
+          FILE=$(find "$STATE_DIR" \
+            -maxdepth 1 \
+            -type f \
+            -name "stable-deploy-${ENV}-*.json" \
+            | sort \
+            | tail -n 1)
+
+          if [[ -z "$FILE" ]]; then
+            echo "❌ No stable deployment found for environment: $ENV"
+            exit 1
+          fi
+
+          echo ""
+          echo "Selected stable file:"
+          echo "$FILE"
+
+          echo ""
+          echo "Stable deployment:"
+          cat "$FILE"
+
+          COMMIT=$(jq -r '.commit' "$FILE")
+          TAG=$(jq -r '.stable_tag' "$FILE")
+          FILE_ENV=$(jq -r '.env' "$FILE")
+
+          if [[ "$FILE_ENV" != "$ENV" ]]; then
+            echo "❌ Environment mismatch"
+            echo "Expected: $ENV"
+            echo "Found:    $FILE_ENV"
+            exit 1
+          fi
+
+          if [[ -z "$COMMIT" || "$COMMIT" == "null" ]]; then
+            echo "❌ Stable commit missing"
+            exit 1
+          fi
+
+          if [[ -z "$TAG" || "$TAG" == "null" ]]; then
+            echo "❌ Stable tag missing"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ Latest stable deployment found"
+          echo "Commit: $COMMIT"
+          echo "Tag:    $TAG"
+
+          echo "stable_commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "stable_tag=$TAG" >> "$GITHUB_OUTPUT"

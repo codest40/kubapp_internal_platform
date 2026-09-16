@@ -1,0 +1,60 @@
+name: Unlock tf Key
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Stack to run
+        required: true
+        type: choice
+        options: [infra, k8s]
+
+      env:
+        description: Environment
+        required: true
+        type: choice
+        options: [dev, prod]
+
+      lock_id:
+        description: Terraform Lock ID
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  unlock:
+    name: Unlock Terraform State
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Show inputs
+        run: |
+            echo "STACK: ${{ github.event.inputs.stack }}"
+            echo "ENV: ${{ github.event.inputs.env }}"
+            echo "LOCK_ID: ${{ github.event.inputs.lock_id }}"
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run unlock script
+        run: |
+          chmod +x scripts/extra/unlock_tf.sh
+          ./scripts/extra/unlock_tf.sh \
+            "${{ github.event.inputs.stack }}" \
+            "${{ github.event.inputs.env }}" \
+            "${{ github.event.inputs.lock_id }}"
+
+      - name: Done
+        run: echo "✅ Unlock completed"
+

@@ -1,0 +1,33 @@
+[project]
+name = "python-quality-app"
+version = "1.0.0"
+description = "astAPI application for CI/CD quality checks"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pytest",
+    "httpx",
+    "ruff",
+    "bandit",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

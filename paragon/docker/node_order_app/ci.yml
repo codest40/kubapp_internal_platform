@@ -1,0 +1,30 @@
+runtime: node
+
+ci_commands:
+  lint:
+    - npm
+    - run
+    - lint
+
+  security:
+    - npm
+    - audit
+
+  security_env: []
+
+  test:
+    - npm
+    - test
+
+  build:
+    - npm
+    - run
+    - build
+
+extra_data:
+  healthcheck:
+    app_port: 3000
+    host_port: 3000
+    endpoints:
+      - /health
+    expected_status: 200

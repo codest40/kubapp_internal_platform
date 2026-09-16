@@ -1,0 +1,36 @@
+runtime: python
+
+ci_commands:
+  lint:
+    - python
+    - -m
+    - ruff
+    - check
+    - .
+
+  security:
+    - python
+    - -m
+    - bandit
+    - -r
+    - .
+
+  security_env: []
+
+  test:
+    - python
+    - -m
+    - pytest
+
+  build:
+    - python
+    - -m
+    - build
+
+extra_data:
+  healthcheck:
+    app_port: 8000
+    host_port: 8000
+    endpoints:
+      - /health
+    expected_status: 200

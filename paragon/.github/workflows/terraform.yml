@@ -1,0 +1,757 @@
+name: Terraform Provision
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Action to run
+        required: true
+        type: choice
+        options: [apply, destroy]
+
+      env:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  security-events: write
+
+concurrency:
+  group: terraform-${{ github.event.inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+
+  run_checks:
+    if: ${{ github.event.inputs.action == 'apply' }}
+    name: Static Checks
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - iac/infra
+          - iac/k8s
+          - iac/manifests
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Cache Terraform
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            ${{ matrix.dir }}/.terraform
+          key: terraform-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.tf', matrix.dir)) }}
+          restore-keys: |
+            terraform-${{ runner.os }}-
+
+      - name: Configure Terraform Plugin Cache
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+
+          cat > ~/.terraformrc <<EOF
+          plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
+          EOF
+
+      - name: Debug Token
+        run: |
+          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "NO TOKEN"
+          else
+            echo "TOKEN EXISTS"
+          fi
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+
+      # TERRAFORM STATIC VALIDATION
+      - name: Terraform Format Check
+        working-directory: ${{ matrix.dir }}
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform init \
+            -backend=false \
+            -input=false
+
+      - name: Decrypt tfvars
+        working-directory: ${{ matrix.dir }}
+        run: |
+          MODULE=$(basename ${{ matrix.dir }})
+          sops -d envs/${ENV}/${MODULE}.tfvars.enc > ${MODULE}.tfvars
+
+      - name: Terraform Validate
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform validate
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Init and run TFLint
+        working-directory: ${{ matrix.dir }}
+        run: |
+          tflint --init
+          tflint \
+            --minimum-failure-severity=warning
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+          sudo mv ./bin/trivy /usr/local/bin/trivy
+          trivy --version
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db
+
+      - name: Run Trivy config scan
+        run: |
+          trivy config ${{ matrix.dir }} \
+            --severity CRITICAL,HIGH \
+            --format table \
+            --ignorefile ${{ github.workspace }}/.trivyignore \
+            --exit-code 1
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ matrix.dir }}
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          config_file: .checkov.yaml
+          output_format: sarif
+
+      - name: Setup Infracost
+        continue-on-error: true
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate Infracost Breakdown
+        continue-on-error: true
+        working-directory: ${{ matrix.dir }}
+        run: |
+          MODULE=$(basename ${{ matrix.dir }})
+          infracost breakdown \
+            --path . \
+            --terraform-var-file=${MODULE}.tfvars \
+            --format json \
+            --out-file infracost.json
+
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "⚠️ Infracost failed (Acc Issue) but CI will continue"
+          fi
+          exit 0
+
+      - name: Show Infracost Report
+        continue-on-error: true
+        working-directory: ${{ matrix.dir }}
+        run: |
+          echo "Checking file..."
+          ls -la infracost.json || true
+          cat infracost.json || true
+
+
+      - name: Checks Passed
+        run: |
+          echo "======================================"
+          echo "✅ ALL STATIC CHECKS PASSED"
+          echo "Directory: ${{ matrix.dir }}"
+          echo "======================================"
+
+  # INFRA PLAN
+  infra_plan:
+    if: ${{ github.event.inputs.action == 'apply' }}
+    name: Infra - Plan
+    needs: run_checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Terraform Init
+        working-directory: iac/infra
+        run: terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+
+      - name: Terraform Validate
+        working-directory: iac/infra
+        run: |
+          terraform fmt
+          terraform fmt -check
+          terraform validate
+
+      - name: Load tfvars (infra)
+        working-directory: iac/infra
+        run: sops -d envs/${ENV}/infra.tfvars.enc > infra.tfvars
+
+      - name: Terraform Plan
+        working-directory: iac/infra
+        run: |
+            terraform plan -out=infra.plan -var-file=infra.tfvars
+
+      - name: Upload Infra Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-plan-${{ github.event.inputs.env }}
+          path: iac/infra/infra.plan
+
+
+# INFRA APPROVAL (PROD ONLY)
+  infra_approve:
+    if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.env == 'prod' }}
+    name: Infra - Approval
+    needs: infra_plan
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: infra-plan-${{ github.event.inputs.env }}
+          path: infra-plan
+
+      - name: Show Plan
+        run: terraform show infra-plan/infra.plan
+
+
+# INFRA APPLY
+  infra_apply:
+    name: Infra - Apply
+    needs: infra_plan
+    if: ${{ github.event.inputs.action == 'apply' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.env }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Init
+        working-directory: iac/infra
+        run: terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+
+      - name: Load tfvars
+        working-directory: iac/infra
+        run: sops -d envs/${ENV}/infra.tfvars.enc > infra.tfvars
+
+      - name: Apply Infra
+        working-directory: iac/infra
+        run: |
+             terraform apply -auto-approve -var-file=infra.tfvars
+
+
+# K8S PLAN
+  k8s_plan:
+    if: ${{ github.event.inputs.action == 'apply' }}
+    name: K8s - Plan
+    needs: infra_apply
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Init K8s
+        working-directory: iac/k8s
+        run: terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+
+      - name: Validate K8s
+        working-directory: iac/k8s
+        run: |
+          terraform fmt
+          terraform fmt -check
+          terraform validate
+
+      - name: Load tfvars (k8s)
+        working-directory: iac/k8s
+        run: |
+            sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+            #BACKEND_FILE="$ROOT/iac/k8s/envs/$ENV/backend.hcl"
+            #TF_STATE_BUCKET="$(awk -F'"' '/^bucket[[:space:]]*=/{print $2}' "$BACKEND_FILE")"
+            #echo "TF_STATE_BUCKET=$TF_STATE_BUCKET" >> GITHUB_ENV
+
+      - name: Plan K8s
+        working-directory: iac/k8s
+        run:  |
+         terraform plan -out=k8s.plan -var-file=k8s.tfvars
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-plan-${{ github.event.inputs.env }}
+          path: iac/k8s/k8s.plan
+
+
+  k8s_approve:
+    if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.env == 'prod' }}
+    name: K8s - Approval
+    needs: k8s_plan
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: k8s-plan-${{ github.event.inputs.env }}
+          path: k8s-plan
+
+      - name: Show Plan
+        run: terraform show k8s-plan/k8s.plan
+
+
+  k8s_apply:
+    name: K8s - Apply
+    needs: k8s_plan
+    if: ${{ github.event.inputs.action == 'apply' }}
+    runs-on: ubuntu-latest
+    env:
+      PROJECT: "kubapp"
+
+    environment: ${{ github.event.inputs.env }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Init
+        working-directory: iac/k8s
+        run: terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+
+      - name: Load tfvars
+        working-directory: iac/k8s
+        run: sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+
+      - name: Configure kubeconfig
+        run: |
+          EKS_CLUSTER_NAME="${{ env.PROJECT }}-${ENV}"
+          echo "EKS cluster: $EKS_CLUSTER_NAME"
+          aws eks update-kubeconfig \
+            --region "${{ vars.AWS_REGION }}"  \
+            --name "$EKS_CLUSTER_NAME"
+          kubectl get nodes
+
+      - name: Apply K8s
+        working-directory: iac/k8s
+        run: |
+          terraform apply -auto-approve -var-file=k8s.tfvars
+
+  Manifests_plan:
+    if: ${{ github.event.inputs.action == 'apply' }}
+    name: Manifests - Plan
+    needs: k8s_apply
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Init Kubernetes Manifests
+        working-directory: iac/manifests
+        run: terraform init -reconfigure
+
+      - name: Validate Manifests
+        working-directory: iac/manifests
+        run: |
+          terraform fmt
+          terraform fmt -check
+          terraform validate
+
+      - name: Load tfvars
+        working-directory: iac/manifests
+        run: sops -d envs/${ENV}/manifests.tfvars.enc > manifests.tfvars
+
+      - name: Plan Manifests
+        working-directory: iac/manifests
+        run: terraform plan -out=manifests.plan -var-file=manifests.tfvars
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifests-plan-${{ github.event.inputs.env }}
+          path: iac/manifests/manifests.plan
+
+
+# Manifest APPROVAL
+  Manifests_approve:
+    if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.env == 'prod' }}
+    name: Manifests - Approval
+    needs: Manifests_plan
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: manifests-plan-${{ github.event.inputs.env }}
+          path: manifests-plan
+
+      - name: Show Plan
+        run: terraform show manifests-plan/manifests.plan
+
+
+  Manifests_apply:
+    name: Manifests - Apply
+    needs: Manifests_plan
+    if: ${{ github.event.inputs.action == 'apply' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.env }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Init
+        working-directory: iac/manifests
+        run: terraform init -reconfigure
+
+      - name: Load tfvars
+        working-directory: iac/manifests
+        run: sops -d envs/${ENV}/manifests.tfvars.enc > manifests.tfvars
+
+      - name: Apply K8s Manifests
+        working-directory: iac/manifests
+        run: terraform apply -auto-approve -var-file=manifests.tfvars
+
+
+# =========================================================
+# DESTROY (K8S → INFRA)
+# =========================================================
+  destroy:
+    if: ${{ github.event.inputs.action == 'destroy' }}
+    name: Destroy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Extract metadata from infra
+        working-directory: iac/infra
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          CLUSTER_NAME=$(terraform output -raw cluster_name 2>/dev/null || true)
+          ENV_NAME=$(terraform output -raw env 2>/dev/null || true)
+          PROJECT_NAME=$(terraform output -raw project 2>/dev/null || true)
+          VPC_ID=$(terraform output -raw vpc_id 2>/dev/null || true)
+          AWS_REGION=$(terraform output -raw region 2>/dev/null || true)
+          ZONE_ID=$(terraform output -raw dns_zone_id 2>/dev/null || true)
+
+          if [ -z "$CLUSTER_NAME" ]]  || [[ "$CLUSTER_NAME" == *"Error:"* ]]; then
+            echo "❌ cluster_name output is missing"
+            exit 1
+          fi
+          if [ -z "$ZONE_ID" ]]  || [[ "$ZONE_ID" == "null" ]]; then
+            echo "❌ DNS Zone ID output is missing"
+            exit 1
+          fi
+
+          echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
+          echo "ENV=$ENV_NAME" >> $GITHUB_ENV
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+          echo "ZONE_ID=$ZONE_ID" >> $GITHUB_ENV
+          echo "PROJECT=$PROJECT_NAME" >> $GITHUB_ENV
+          echo "AWS_REGION=$AWS_REGION" >> $GITHUB_ENV
+
+      - name: Extract Data From K8s
+        working-directory: iac/k8s
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          NAMESPACES=$(terraform output -json namespaces 2>/dev/null || true)
+          if [[ -z "$NAMESPACES" || "$NAMESPACES" == "null" ]]; then
+            echo "No Terraform-managed namespaces Extracted"
+          fi
+          echo "NAMESPACES=$NAMESPACES" >> $GITHUB_ENV
+
+      - name: Connect to EKS cluster
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ env.CLUSTER_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Cleanup cluster
+        run: bash scripts/cleanups/clean_cluster.sh
+        env:
+          TF_CREATED_NS: "${{ env.NAMESPACES }}"
+
+      - name: Destroy K8s Manifests
+        working-directory: iac/manifests
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure
+          terraform validate
+          sops -d envs/${ENV}/manifests.tfvars.enc > manifests.tfvars
+          terraform destroy -auto-approve -var-file=manifests.tfvars
+
+      - name: Destroy K8s Core
+        working-directory: iac/k8s
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          terraform validate
+          sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+          terraform destroy -auto-approve -var-file=k8s.tfvars
+
+      - name: Ensure No Leftovers From k8s
+        run: bash scripts/cleanups/delete_leftovers.sh
+        env:
+          ENV: ${{ env.ENV }}
+          CLUSTER_NAME: ${{ env.CLUSTER_NAME }}
+          PROJECT: ${{ env.PROJECT }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          VPC_ID: ${{ env.VPC_ID }}
+
+      - name: Destroy Infra
+        working-directory: iac/infra
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          terraform validate
+          sops -d envs/${ENV}/infra.tfvars.enc > infra.tfvars
+          terraform destroy -auto-approve -var-file=infra.tfvars
+
+      - name: Wipe Away Never-expire Logs Groups
+        if: always()
+        run: bash scripts/cleanups/cleanup_logs.sh
+
+      - name: Verify Cleanups
+        if: always()
+        run: |
+          bash scripts/cleanups/verify_cleanup.sh
+
+      - name: Final Conditional Cleanups
+        run: |
+          LEFTOVERS="${{ env.LEFTOVERS }}"
+          echo "LEFTOVERS=${{ env.LEFTOVERS }}"
+
+          if [[ -n "$LEFTOVERS" ]]; then
+            if [[ "$LEFTOVERS" = "true" ]]; then
+              bash scripts/cleanups/clean_final.sh
+              echo "✅ Final cleanup Done!"
+            else
+              echo "No Further cleanup required"
+            fi
+          else
+            echo "❌ LEFTOVERS Variable Not Discovered"
+          fi
+
+      - name: Remove Orphan Domains
+        env:
+          ZONE_ID: ${{ env.ZONE_ID }}
+        run: bash scripts/gitops/remove_orphan_domains.sh
+
+      - name: Remove Route53 DNS App Config
+        env:
+          ZONE_ID: ${{ env.ZONE_ID }}
+        run: |
+          SYNC_MODE=destroy bash scripts/gitops/sync_route53.sh
+
+      - name: Finally
+        if: success()
+        run: echo "✅ $CLUSTER_NAME Terraform Workflow Passed!"
+

@@ -1,0 +1,34 @@
+{
+  "module": "security",
+  "script": "security.sh",
+  "timestamp": "2026-08-19T09:42:52Z",
+  "status": "pass",
+
+  "summary": {
+    "total_checked": 519,
+    "findings": 2,
+    "errors": 0,
+    "warnings": 2
+  },
+
+  "errors": [],
+  "warnings": [
+  "secret_manifest_location: gitops/charts/postgres/templates/secret.yaml",
+  "plaintext_credential: scripts/create_values.sh"
+],
+
+  "findings": [
+  {
+    "severity": "warning",
+    "type": "secret_manifest_location",
+    "file": "gitops/charts/postgres/templates/secret.yaml",
+    "message": "kubernetes secret manifest outside approved gitops/secrets path"
+  },
+  {
+    "severity": "warning",
+    "type": "plaintext_credential",
+    "file": "scripts/create_values.sh",
+    "message": "possible plaintext credential detected"
+  }
+]
+}

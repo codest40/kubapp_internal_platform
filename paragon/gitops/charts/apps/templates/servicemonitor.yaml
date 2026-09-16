@@ -1,0 +1,24 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Values.appName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    release: kube-prometheus-stack
+    app: {{ .Values.appName }}
+
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path | default "/metrics" }}
+      interval: {{ .Values.serviceMonitor.interval | default "30s" }}
+
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.namespace }}
+{{- end }}

@@ -1,0 +1,15 @@
+namespace: dev
+
+postgres:
+  name: postgres
+  image: postgres:15
+
+  database: kubapp
+  username: kubuser
+  password: kubpassword
+
+  storage: 10Gi
+
+service:
+  port: 5432
+

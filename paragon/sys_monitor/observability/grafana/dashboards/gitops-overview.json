@@ -1,0 +1,85 @@
+{
+  "id": null,
+  "title": "GitOps Overview",
+  "tags": ["gitops", "sys_monitor"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total GitOps Apps",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "gitops_app_total",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Healthy Apps",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "gitops_app_healthy_total",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Out of Sync",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "gitops_app_out_of_sync_total",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Degraded Apps",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "gitops_app_degraded_total",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Convergence Score",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 6},
+      "targets": [
+        {
+          "expr": "gitops_convergence_score",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "minValue": 0,
+        "maxValue": 100
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Drift Ratio",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 6},
+      "targets": [
+        {
+          "expr": "gitops_drift_ratio",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "minValue": 0,
+        "maxValue": 1
+      }
+    }
+  ]
+}

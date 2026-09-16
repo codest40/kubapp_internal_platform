@@ -1,0 +1,18 @@
+namespace: dev
+
+ingress:
+  name: kubapp-dev-alb
+  className: alb
+  baseDomain: kubapp.rundailytest.site
+
+  enableSubdomainRouting: true
+
+  annotations:
+    scheme: internet-facing
+    targetType: ip
+    healthcheckPath: /
+    listenPorts: '[{"HTTP":80}]'
+
+services:
+  - name: user
+  - name: admin

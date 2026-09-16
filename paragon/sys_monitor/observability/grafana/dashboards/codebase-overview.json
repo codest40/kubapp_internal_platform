@@ -1,0 +1,158 @@
+{
+  "uid": "codebase-overview",
+  "title": "Codebase Overview",
+  "tags": ["codebase", "sys_monitor", "sre"],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+
+  "panels": [
+
+    {
+      "type": "gauge",
+      "title": "Platform Health",
+      "targets": [
+        {
+          "expr": "kubapp_platform_health"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Module Health Scores",
+      "targets": [
+        {
+          "expr": "kubapp_module_score"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Module Status (Pass/Fail)",
+      "targets": [
+        {
+          "expr": "kubapp_module_status"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Findings (Total per Module)",
+      "targets": [
+        {
+          "expr": "kubapp_findings_total"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Critical Issues",
+      "targets": [
+        {
+          "expr": "kubapp_critical_total"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Warnings Trend",
+      "targets": [
+        {
+          "expr": "kubapp_warning_total"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Errors Trend",
+      "targets": [
+        {
+          "expr": "kubapp_error_total"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Findings by Type",
+      "targets": [
+        {
+          "expr": "kubapp_finding_type_total"
+        }
+      ]
+    },
+
+    {
+      "type": "stat",
+      "title": "Total Files (Inventory)",
+      "targets": [
+        {
+          "expr": "kubapp_total_files"
+        }
+      ]
+    },
+
+    {
+      "type": "stat",
+      "title": "Shell Scripts",
+      "targets": [
+        {
+          "expr": "kubapp_total_shell_scripts"
+        }
+      ]
+    },
+
+    {
+      "type": "stat",
+      "title": "Terraform Roots",
+      "targets": [
+        {
+          "expr": "kubapp_total_terraform_roots"
+        }
+      ]
+    },
+
+    {
+      "type": "stat",
+      "title": "Dockerfiles",
+      "targets": [
+        {
+          "expr": "kubapp_total_dockerfiles"
+        }
+      ]
+    },
+
+    {
+      "type": "stat",
+      "title": "Kubernetes Manifests",
+      "targets": [
+        {
+          "expr": "kubapp_total_k8s_manifests"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Scan Freshness",
+      "targets": [
+        {
+          "expr": "time() - kubapp_last_scan_timestamp"
+        }
+      ]
+    }
+
+  ]
+}

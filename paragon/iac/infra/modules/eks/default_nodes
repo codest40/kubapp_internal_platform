@@ -1,0 +1,32 @@
+resource "aws_eks_node_group" "default_nodes" {
+  cluster_name    = aws_eks_cluster.this.name
+  node_group_name = "${var.cluster_name}-default-nodes"
+  node_role_arn   = var.node_role_arn
+
+  subnet_ids = var.private_subnet_ids
+
+  scaling_config {
+    desired_size = 1
+    max_size     = 3
+    min_size     = 1
+  }
+
+  instance_types = [var.node_instance_type]
+
+  ami_type  = "AL2023_x86_64_STANDARD"
+  disk_size = 30
+
+  labels = {
+    node_type = "default"
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  tags = merge(var.tags, {
+    Name       = "${var.cluster_name}-default-node"
+    eks-scope  = "default"
+    workload   = "fallback"
+  })
+}

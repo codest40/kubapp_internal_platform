@@ -1,0 +1,66 @@
+appName: app
+
+namespace: dev
+
+replicaCount: 1
+
+image:
+  repository: nginx
+  tag: stable
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+resources:
+  requests:
+    cpu: 100m
+  limits:
+    cpu: 500m
+
+env: {}
+
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  cpu: 70
+
+securityContext:
+  pod:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  container:
+    runAsNonRoot: true
+    runAsUser: 10001
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+probes:
+  readiness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  liveness:
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 20
+
+serviceAccount:
+  create: true
+  name: default-sa
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456:role/defautl-role
+
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  interval: 30s
+

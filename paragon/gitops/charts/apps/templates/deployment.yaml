@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+  namespace: {{ .Values.namespace }}
+
+  labels:
+    app: {{ .Values.appName }}
+{{- with .Values.labels }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+
+spec:
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+  {{- with .Values.labels }}
+  {{ toYaml . | nindent 8 }}
+  {{- end }}
+
+    spec:
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.pod.runAsNonRoot | default true }}
+        seccompProfile:
+          type: {{ .Values.securityContext.pod.seccompProfile.type | default "RuntimeDefault" }}
+
+      {{- if .Values.storage }}
+      {{- if .Values.storage.volumes }}
+      volumes:
+{{ toYaml .Values.storage.volumes | indent 8 }}
+      {{- end }}
+      {{- end }}
+
+      serviceAccountName: {{ .Values.serviceAccount.name | default (printf "%s-sa" .Values.appName) }}
+
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+
+      {{- if .Values.affinity }}
+      affinity:
+{{ toYaml .Values.affinity | indent 8 }}
+      {{- end }}
+
+      containers:
+        - name: {{ .Values.appName }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: "{{ $value }}"
+            {{- end }}
+
+          {{- if and .Values.secret .Values.secret.enabled }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secret.name | quote }}
+          {{- end }}
+
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+
+          securityContext:
+            runAsNonRoot: {{ .Values.securityContext.container.runAsNonRoot }}
+            runAsUser: {{ .Values.securityContext.container.runAsUser | default 1000 }}
+            allowPrivilegeEscalation: {{ .Values.securityContext.container.allowPrivilegeEscalation | default false }}
+            readOnlyRootFilesystem: {{ .Values.securityContext.container.readOnlyRootFilesystem }}
+            capabilities:
+              drop:
+{{ toYaml .Values.securityContext.container.capabilities.drop | indent 16 }}
+          {{- if .Values.storage }}
+          {{- if .Values.storage.volumeMounts }}
+          volumeMounts:
+{{ toYaml .Values.storage.volumeMounts | indent 12 }}
+          {{- end }}
+          {{- end }}
+
+          {{- if .Values.probes.readiness }}
+          {{- $r := .Values.probes.readiness }}
+          readinessProbe:
+            httpGet:
+              path: {{ (and $r.httpGet $r.httpGet.path) | default "/"  }}
+              port: {{ (and $r.httpGet $r.httpGet.port) | default .Values.service.targetPort }}
+            initialDelaySeconds: {{ $r.initialDelaySeconds }}
+            periodSeconds: {{ $r.periodSeconds }}
+          {{- end }}
+
+          {{- if .Values.probes.liveness }}
+          {{- $l := .Values.probes.liveness }}
+          livenessProbe:
+            httpGet:
+              path: {{ (and $l.httpGet $l.httpGet.path) | default "/" }}
+              port: {{ (and $l.httpGet $l.httpGet.port) | default .Values.service.targetPort }}
+            initialDelaySeconds: {{ $l.initialDelaySeconds }}
+            periodSeconds: {{ $l.periodSeconds }}
+          {{- end }}
+
+          {{- if .Values.probes.startup }}
+          {{- $s := .Values.probes.startup }}
+          startupProbe:
+            httpGet:
+              path: {{ (and $s.httpGet $s.httpGet.path) | default "/" }}
+              port: {{ (and $s.httpGet $s.httpGet.port) | default .Values.service.targetPort }}
+            failureThreshold: {{ $s.failureThreshold }}
+            periodSeconds: {{ $s.periodSeconds }}
+          {{- end }}
+

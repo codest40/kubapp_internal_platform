@@ -1,0 +1,9 @@
+# IAM wildcard policies (IRSA / EKS access patterns)
+AWS-0039
+AWS-0040
+AWS-0041
+
+# NETWORK (intentional design choices)
+AWS-0164
+AWS-0104
+

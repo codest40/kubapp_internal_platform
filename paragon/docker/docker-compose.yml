@@ -1,0 +1,32 @@
+#version: "3.9"
+
+services:
+
+  user:
+    build: ./user_app
+    container_name: user_app
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+
+  admin:
+    build: ./admin_app
+    container_name: admin_app
+    ports:
+      - "4001:4000"
+    restart: unless-stopped
+
+  nodejs:
+    build: ./nodejs_app
+    container_name: nodejs_app
+    ports:
+      - "3002:3000"
+    restart: unless-stopped
+
+  url_shortener:
+    build: ./url_shortener
+    container_name: url_shortener
+    ports:
+      - "3003:3000"
+    restart: unless-stopped
+

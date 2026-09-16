@@ -1,0 +1,26 @@
+{
+    "name": "node_order_app",
+    "version": "1.0.0",
+    "description": "Order management API for processing, validating, and retrieving customer orders.",
+    "keywords": [
+        "orders",
+        "order-management",
+        "rest-api",
+        "nodejs",
+        "backend",
+        "microservice"
+    ],
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "lint": "eslint .",
+        "test": "node --test",
+        "build": "mkdir -p dist && cp -r src package.json package-lock.json dist/"
+    },
+    "dependencies": {
+        "express": "^5.1.0"
+    },
+    "devDependencies": {
+        "eslint": "^9.39.5"
+    }
+}

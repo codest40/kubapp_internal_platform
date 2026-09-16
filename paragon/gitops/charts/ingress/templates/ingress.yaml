@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.ingress.name }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+    alb.ingress.kubernetes.io/scheme: {{ .Values.ingress.annotations.scheme }}
+    alb.ingress.kubernetes.io/target-type: {{ .Values.ingress.annotations.targetType }}
+    alb.ingress.kubernetes.io/listen-ports: '{{ toJson .Values.ingress.annotations.listenPorts }}'
+    alb.ingress.kubernetes.io/healthcheck-path: {{ .Values.ingress.annotations.healthcheckPath }}
+    alb.ingress.kubernetes.io/group.name: {{ .Values.ingress.annotations.group }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.ingress.certificateArn }}
+    #{{- if ne .Values.namespace "argocd" }}
+    #alb.ingress.kubernetes.io/ssl-redirect: "443"
+    #{{- end }}
+
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+
+  rules:
+
+    # Path-based routing
+    - host: {{ .Values.ingress.baseDomain }}
+      http:
+        paths:
+{{- range .Values.services }}
+          - path: /{{ .name }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ default (printf "%s-service" .name) (dig "backend" "service" "" .) }}
+                port:
+                  number: {{ .port }}
+{{- end }}
+
+{{- if .Values.ingress.enableSubdomainRouting }}
+{{- range .Values.services }}
+
+    # Subdomain routing
+    - host: {{ .name }}.{{ $.Values.ingress.baseDomain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ default (printf "%s-service" .name) (dig "backend" "service" "" .) }}
+                port:
+                  number: {{ .port }}
+
+{{- end }}
+{{- end }}

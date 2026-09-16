@@ -1,0 +1,26 @@
+CI:
+    image
+    runtime
+    healthcheck
+    platform_file
+    secret_file
+
+kubapp.yml:
+    service.name
+    service.compute
+    app.port
+    appUser
+    healthPath
+    livePath
+    basePath
+    deploy.env
+    containerUid
+    runtime.env
+    storage.*
+    features.*
+
+secrets.yml:
+    secret existence/content metadata
+
+Platform:
+    defaults when these aren't supplied

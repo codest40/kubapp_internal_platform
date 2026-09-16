@@ -1,0 +1,18 @@
+creation_rules:
+
+  # GitOps Kubernetes secrets
+  - path_regex: gitops/secrets/.*\.ya?ml$
+    encrypted_regex: '^(data|stringData)$'
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
+
+  # Terraform tfvars files
+  - path_regex: iac/.*\.tfvars$
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
+
+  # Docker app secrets
+  - path_regex: docker/.*/.*secret.*\.ya?ml$
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
+
+  # Test
+  - path_regex: test.yaml
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg

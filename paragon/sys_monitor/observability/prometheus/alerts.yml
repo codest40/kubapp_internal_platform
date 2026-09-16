@@ -1,0 +1,72 @@
+
+groups:
+  - name: kubapp-platform-alerts
+    rules:
+
+      - alert: KubAppPlatformHealthCritical
+        expr: kubapp_platform_health < 50
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Platform health is critically low"
+          description: "Overall platform health dropped below 50"
+
+      - alert: KubAppPlatformHealthDegraded
+        expr: kubapp_platform_health < 75
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Platform health degraded"
+          description: "Platform health is below acceptable threshold"
+
+  - name: kubapp-security-alerts
+    rules:
+
+      - alert: KubAppSecurityFailing
+        expr: kubapp_module_status{module="security"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Security module failing"
+          description: "Security checks are failing"
+
+      - alert: KubAppHighSecurityFindings
+        expr: kubapp_critical_total{module="security"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical security findings detected"
+
+  - name: kubapp-validation-alerts
+    rules:
+
+      - alert: KubAppValidationDegraded
+        expr: kubapp_module_score{module="validation"} < 60
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validation score is low"
+
+      - alert: KubAppSyntaxIssuesHigh
+        expr: kubapp_finding_type_total{type="js_syntax"} > 5
+        for: 2m
+        labels:
+          severity: warning
+
+  - name: kubapp-system-alerts
+    rules:
+
+      - alert: KubAppNoMetricsUpdate
+        expr: time() - kubapp_last_scan_timestamp > 600
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Metrics pipeline is stale"
+          description: "No scan update in 10 minutes"
+

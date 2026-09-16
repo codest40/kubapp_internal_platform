@@ -1,0 +1,343 @@
+name: Add New Apps
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
+
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+env:
+  STATE_FILE: ${{ github.workspace }}/gitops/state/current.json
+  ENV: ${{ inputs.env || 'dev' }}
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: using-commit
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    env:
+        ENV: ${{ inputs.env || 'dev' }}
+
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Check GitHub App secrets
+        env:
+          APP_ID: ${{ secrets.APP_ID_GITHUB }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID_GITHUB }}
+          PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
+        run: |
+          echo "APP_ID length: ${#APP_ID}"
+          echo "CLIENT_ID length: ${#CLIENT_ID}"
+          echo "PRIVATE_KEY length: ${#PRIVATE_KEY}"
+          [[ -n "$APP_ID" ]] || {
+            echo "APP_ID_GITHUB is missing"
+            exit 1
+          }
+          [[ -n "$CLIENT_ID" ]] || {
+            echo "CLIENT_ID_GITHUB is missing"
+            exit 1
+          }
+          [[ -n "$PRIVATE_KEY" ]] || {
+            echo "APP_PRIVATE_KEY_GITHUB is missing"
+            exit 1
+          }
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.CLIENT_ID_GITHUB }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.REPO }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install jq and SOPS
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+          test -s ~/.config/sops/age/keys.txt || {
+            echo "❌ AGE key missing"
+            exit 1
+          }
+
+      - name: Setup kubeconfig
+        run: |
+          set -e
+
+          aws eks update-kubeconfig \
+            --region ${{ vars.AWS_REGION }} \
+            --name kubapp-dev
+
+          export KUBECONFIG=~/.kube/config
+          echo "✅ kubeconfig created"
+          kubectl cluster-info
+
+      - name: Check It
+        run: |
+          set -e
+          #echo "=== kubeconfig ==="
+          #cat ~/.kube/config || true
+          echo "=== auth test ==="
+          kubectl auth can-i get pods -A || true
+
+      - name: Check Readiness
+        run: bash scripts/gitops/check_cluster.sh
+
+      - name: Get Current Env
+        run: |
+          STATE_FILE="${{ env.STATE_FILE }}"
+          if [[ ! -f "$STATE_FILE" || ! -s "$STATE_FILE" ]]; then
+            echo "❌ State File: $STATE_FILE is Missing or Empty. Cannot Decipher the appropriate ENV to update"
+            exit 1
+          fi
+          echo "State file Showing..."
+          cat "$STATE_FILE"
+
+          CURRENT_RUN_ID="${{ github.event.workflow_run.id }}"
+          STATE_RUN_ID=$(jq -r '.run_id' gitops/state/current.json)
+          STATE_TS=$(jq -r '.timestamp' gitops/state/current.json)
+          WORKFLOW="${{ github.event_name }}"
+          if [[ "$STATE_RUN_ID" != "$CURRENT_RUN_ID" ]]; then
+            if [[ "$WORKFLOW" == 'workflow_dispatch' ]]; then
+              echo "Manual trigger detected — skipping stale check"
+            else
+              echo "⚠️ State file is stale or from another run"
+              echo "State: $STATE_RUN_ID | Current: $CURRENT_RUN_ID"
+              exit 1
+            fi
+          fi
+
+          MAX_AGE=30000
+          NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          STATE_EPOCH=$(date -d "$STATE_TS" +%s)
+          NOW_EPOCH=$(date -d "$NOW_TS" +%s)
+          echo "State Timestamp: $STATE_TS"
+          echo "Now Timestamp  : $NOW_TS"
+          AGE=$((NOW_EPOCH - STATE_EPOCH))
+
+          if (( AGE > MAX_AGE )); then
+            if [[ "$WORKFLOW" == 'workflow_dispatch' ]]; then
+              echo "Manual trigger detected — skipping time check"
+            else
+              echo "❌ State file too old ($AGE sec)"
+              exit 1
+            fi
+          fi
+
+          STATE_ENV=$(jq -r '.env' gitops/state/current.json)
+          if [[ -z "$STATE_ENV" || "$STATE_ENV" == "null" ]]; then
+            echo "❌ ENV Source from state file Empty"
+            exit 1
+          fi
+
+          echo "ENV=$STATE_ENV" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+          if ! command -v yq >/dev/null 2>&1; then
+            sudo wget -qO /usr/local/bin/yq \
+              https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+          if ! command -v helm >/dev/null 2>&1; then
+            sudo snap install helm --classic
+          fi
+
+          if ! command -v sops >/dev/null 2>&1; then
+            curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+            chmod +x sops
+            sudo mv sops /usr/local/bin/sops
+          fi
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Get Cert Arn From Terraform
+        working-directory: iac/infra
+        run: |
+          set -euo pipefail
+          ENV="${{ env.ENV }}"
+          terraform init -reconfigure -backend-config="envs/$ENV/backend.hcl"
+          DOMAIN=$(terraform output -raw domain 2>/dev/null || true)
+          CERT_ARN=$(terraform output -raw cert_arn 2>/dev/null || true)
+          IRSA_ARN=$(terraform output -raw app_pods_role_arn 2>/dev/null || true)
+
+          if [[ -z "$DOMAIN" ]]; then
+            echo "❌ Domain Not Retrieved from terraform"
+            exit 1
+          fi
+          if [[ -z "$CERT_ARN" ]]; then
+            echo "❌ Arn Certificate Not Retrieved from terraform"
+            exit 1
+          fi
+          if [[ -z "$IRSA_ARN" ]]; then
+            echo "❌ Irsa Arn Not Retrieved from terraform"
+            exit 1
+          fi
+          echo "DOMAIN Found: $DOMAIN"
+          echo "CERT Found: $CERT_ARN"
+          echo "POD ROLE Found: $IRSA_ARN"
+
+          echo "DOMAIN=$DOMAIN"  >> $GITHUB_ENV
+          echo "IRSA_ARN=$IRSA_ARN"  >> $GITHUB_ENV
+          echo "CERT_ARN=$CERT_ARN" >> $GITHUB_ENV
+
+      - name: Create values + inject vars + ingress registration
+        env:
+          DOMAIN: "${{ env.DOMAIN }}"
+          CERT_ARN: "${{ env.CERT_ARN }}"
+          IRSA_ARN: "${{ env.IRSA_ARN }}"
+        run: |
+          set -euo pipefail
+          ENV="${{ env.ENV }}"
+          APP_LIST="$(find gitops/registry/$ENV -name "*.json" | wc -l)"
+          echo "Number of Resources (Apps + Observability) Found: $APP_LIST"
+          for file in $(find gitops/registry/$ENV -name "*.json"); do
+            ENV1="$ENV"
+            echo ""
+            echo "================================================"
+            echo "Processing metadata: $file"
+            echo "================================================"
+
+            SERVICE=$(jq -r '.service' "$file")
+            ENV=$(jq -r '.env' "$file")
+            NO_SECRETS=$(jq -r '.NO_SECRETS' "$file")
+
+            if [[ "$ENV1" != "$ENV" ]]; then
+              echo "❌ Enviroment Mismatch. Workflow Must run in one environment"
+              echo "Env Specified For Registry: $ENV1"
+              echo "Env Specified for App: $ENV"
+              exit 1
+            fi
+
+            if [[ -z "$SERVICE" || "$SERVICE" == "null" ]]; then
+              echo "❌ Invalid service in $file"
+              exit 1
+            fi
+
+            if [[ -z "$ENV" || "$ENV" == "null" ]]; then
+              echo "❌ Invalid env in $file"
+              exit 1
+            fi
+            echo "file=$file" >> $GITHUB_ENV
+
+            SERVICE_TYPE=$(jq -r '.type' "$file")
+            COMPUTE_TYPE=$(jq -r '.computeType' "$file")
+
+            if [[ "$SERVICE_TYPE" == "App" ]]; then
+              export BACKEND_SERVICE=""
+              export SERVICE_PORT="80"
+              export SERVICE_TYPE=$SERVICE_TYPE
+              if [[ "$COMPUTE_TYPE" == "fargate" ]]; then
+                export HPA_ENABLED="true"
+              fi
+            ####################################################
+            # Create values.yaml
+            ####################################################
+              echo "Creating values.yaml..."
+              bash scripts/gitops/create_values.sh "$file"
+
+            ####################################################
+            # Inject runtime env + encrypted secrets
+            ####################################################
+              echo "Preparing runtime env + secrets..."
+              if [[ "$NO_SECRETS" == "false" ]]; then
+                bash scripts/gitops/create_secrets.sh "$file"
+                echo "✅ Secrets for $SERVICE Updated!"
+              else
+                echo "$SERVICE has No secrets"
+              fi
+
+            ####################################################
+            # Register app in shared ingress
+            ####################################################
+              echo "Registering ingress route for $SERVICE..."
+              bash scripts/gitops/register_new_svc.sh "$SERVICE" "$ENV"
+            elif [[ "$SERVICE_TYPE" == "Backend" ]]; then
+              BACKEND_SERVICE=$(jq -r '.backendService' "$file")
+              if [[ -n "$BACKEND_SERVICE" && "$BACKEND_SERVICE" != "null" ]]; then
+                export BACKEND_SERVICE
+                export SERVICE_TYPE="$SERVICE_TYPE"
+                if [[ "$SERVICE" == "alertmanager" ]]; then
+                  export SERVICE_PORT="9093"
+                elif [[ "$SERVICE" == "prometheus" ]]; then
+                  export SERVICE_PORT="9090"
+                else
+                  export SERVICE_PORT="80"
+                fi
+              else
+                echo "❌ Backend Service Name for $SERVICE is empty"
+                continue
+              fi
+
+              echo "Registering ingress route for $SERVICE..."
+              bash scripts/gitops/register_new_svc.sh "$SERVICE" "$ENV"
+            else
+              echo "❌ Incomplete data for $SERVICE, Update gitops/registry/$ENV/${SERVICE}.json"
+              exit 1
+            fi
+
+            echo "✅ Provision complete for: $SERVICE - $ENV"
+          done
+
+      - name: Validate GitOps structure
+        run: |
+          set -euo pipefail
+          bash scripts/gitops/validate_gitops.sh
+
+      - name: Commit GitOps changes
+        run: |
+          set -euo pipefail
+          ENV="${{ env.ENV }}"
+          DIR="gitops"
+          MSG="[ADD-NEW-APP] provision new application(s)"
+          bash scripts/extra/commit.sh "$DIR" "$MSG"
+          echo "✅ New app provisioning committed successfully for $ENV"

@@ -1,0 +1,144 @@
+{
+  "uid": "github-overview",
+  "title": "GitHub Overview",
+  "tags": ["github", "sys_monitor"],
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Push Events",
+      "targets": [
+        {
+          "expr": "rate(github_push_total[1m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "PR Events",
+      "targets": [
+        {
+          "expr": "rate(github_pr_total[1m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Runs (All)",
+      "targets": [
+        {
+          "expr": "rate(github_workflow_run_total[1m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Failures",
+      "targets": [
+        {
+          "expr": "rate(github_workflow_run_total{conclusion!=\"success\"}[5m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Success Rate",
+      "targets": [
+        {
+          "expr": "sum(rate(github_workflow_run_total{conclusion=\"success\"}[5m])) / sum(rate(github_workflow_run_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Duration (seconds)",
+      "targets": [
+        {
+          "expr": "rate(github_workflow_duration_seconds_sum[5m]) / rate(github_workflow_duration_seconds_count[5m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Releases (Deployment Frequency)",
+      "targets": [
+        {
+          "expr": "increase(github_release_total[7d])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Issues Activity",
+      "targets": [
+        {
+          "expr": "rate(github_issue_total[5m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Lead Time for Changes (hours)",
+      "targets": [
+        {
+          "expr": "github_change_lead_time_seconds / 3600"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Workflow Jobs",
+      "targets": [
+        {
+          "expr": "rate(github_workflow_job_total[5m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Job Failures",
+      "targets": [
+        {
+          "expr": "rate(github_workflow_job_total{conclusion!=\"success\"}[5m])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Jobs by Job Name",
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(github_workflow_job_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Githubs Health Score",
+      "targets": [
+        {
+          "expr": "github_health_score"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "AI Detected Anomalies",
+      "targets": [
+        {
+          "expr": "github_anomaly_flag"
+        }
+      ]
+    }
+  ]
+}

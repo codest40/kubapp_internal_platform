@@ -1,0 +1,11 @@
+{
+  "name": "KUBAPP",
+  "description": "KUBAPP platform automation",
+  "public": false,
+  "default_permissions": {
+    "metadata": "read",
+    "actions": "write",
+    "contents": "write",
+    "pull_requests": "write"
+  }
+}

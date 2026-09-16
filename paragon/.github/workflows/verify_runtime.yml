@@ -1,0 +1,150 @@
+name: Runtime Verification
+
+on:
+  workflow_dispatch:
+
+  workflow_run:
+    workflows:
+      - "Runtime Image Update"
+      - "Add New Apps"
+      - "Remove Orphan App"
+    types: [completed]
+
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID_GITHUB }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: paragon40/kubapp
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup kubeconfig
+        run: |
+          set -euo pipefail
+
+          aws eks update-kubeconfig \
+            --region "${{ vars.AWS_REGION }}" \
+            --name kubapp-dev
+
+          export KUBECONFIG=~/.kube/config
+
+          echo "✅ kubeconfig created"
+
+          kubectl cluster-info
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+          curl -sSL -o argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+
+      - name: Load ENV from state
+        run: |
+          set -euo pipefail
+
+          STATE_FILE="gitops/state/current.json"
+
+          if [[ ! -f "$STATE_FILE" || ! -s "$STATE_FILE" ]]; then
+            echo "❌ Missing state file"
+            exit 1
+          fi
+
+          ENV=$(jq -r '.env' "$STATE_FILE")
+
+          if [[ -z "$ENV" || "$ENV" == "null" ]]; then
+            echo "❌ Invalid ENV in state file"
+            exit 1
+          fi
+
+          environment="${{ inputs.env }}"
+          if [[ -n "$environment" && "$environment" != "$ENV" ]]; then
+            echo "❌ Env Value supplied via workflow call differs from state Env"
+            echo "ENV Supplied: $environment"
+            exit 1
+          fi
+
+          echo "ENV=$ENV" >> "$GITHUB_ENV"
+          echo "Detected ENV: $ENV"
+
+      - name: Run prechecks
+        run: |
+          set -euo pipefail
+
+          bash scripts/gitops/prechecks.sh
+
+      - name: Run postchecks (deep verification)
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ENV="${{ env.ENV }}"
+          DOM="${{ vars.DOMAIN }}"
+
+          export ARGOCD_OPTS="--server $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN"
+          bash scripts/gitops/postchecks.sh "$ENV" "$DOM"
+
+      # FAILURE HANDLER
+      - name: Suggest rollback
+        if: failure()
+        run: |
+          set -euo pipefail
+
+          ENV="${{ env.ENV }}"
+
+          echo "======================================"
+          echo "⚠️ RUNTIME VERIFICATION FAILED"
+          echo "======================================"
+          echo "Environment: $ENV"
+          echo ""
+          echo "The deployment failed runtime verification."
+          echo ""
+          echo "Rollback should use the latest manually"
+          echo "promoted stable deployment for this environment."
+          echo ""
+          echo "Run:"
+          echo "  Activate Pipeline Workflows"
+          echo "  Environment: $ENV"
+          echo "  Mode: rollback"
+          echo ""
+          echo "No stable tag or deployment state was modified."
+          exit 0

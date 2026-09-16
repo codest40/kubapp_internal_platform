@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres
+description: Reusable PostgreSQL chart for Kubapp
+type: application
+version: 1.0.0
+appVersion: "15"

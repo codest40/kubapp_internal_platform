@@ -1,0 +1,20 @@
+skip-check:
+  - CKV2_AWS_5
+  - CKV2_AWS_12
+  - CKV_AWS_38
+  - CKV_AWS_39
+  - CKV_AWS_61   #Acc full access
+  - CKV2_AWS_40
+  - CKV_AWS_58
+  - CKV_AWS_23
+  - CKV_AWS_184
+  - CKV_AWS_382
+  - CKV_AWS_355
+  - CKV_AWS_288
+  - CKV_AWS_290
+  - CKV_AWS_158
+  - CKV_AWS_130
+  - CKV_AWS_286
+  - CKV_AWS_287
+  - CKV_AWS_289
+

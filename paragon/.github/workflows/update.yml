@@ -1,0 +1,95 @@
+name: Runtime Image Update
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: using-commit
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      STATE_FILE: "gitops/state/current.json"
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID_GITHUB }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.REPO }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          sudo wget -qO /usr/local/bin/yq \
+          https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Retrieve Currect ENV
+        run: |
+          set -euo pipefail
+          STATE_FILE="${{ env.STATE_FILE }}"
+          if [[ ! -f "$STATE_FILE" || ! -s "$STATE_FILE" ]]; then
+            echo "❌ State File: $STATE_FILE is Missing or Empty."
+            exit 1
+          fi
+
+          STATE_ENV=$(jq -r '.env' "$STATE_FILE")
+          if [[ -z "$STATE_ENV" || "$STATE_ENV" == "null" ]]; then
+            echo "❌ ENV Source from state file Empty"
+            exit 1
+          fi
+          echo "Detected ENV: $STATE_ENV"
+          echo "ENV=$STATE_ENV" >> $GITHUB_ENV
+
+      - name: Apply GitOps updates
+        run: |
+          set -e
+          ENV1="${{ env.ENV }}"
+          for file in $(find gitops/registry/$ENV1/*.json -name "*.json"); do
+            SERVICE=$(jq -r .service "$file")
+            IMAGE=$(jq -r .image "$file")
+            TAG=$(jq -r .tag "$file")
+            ENV=$(jq -r .env "$file")
+
+            if [ -z "$ENV" ] || [ "$ENV" = "null" ]; then
+              echo "Invalid ENV in $file"
+              exit 1
+            fi
+
+            FILE="gitops/envs/$ENV/$SERVICE/values.yaml"
+            if [[ ! -f "$FILE" ]]; then
+              echo "Values File for ${SERVICE}-${ENV} NOT Found"
+              exit 1
+            fi
+
+            echo "Updating ${SERVICE}-${ENV}"
+            echo "Target file: $FILE"
+            echo "Image: $IMAGE"
+            echo "Tag: $TAG"
+            yq e ".image.repository = \"$IMAGE\"" -i "$FILE"
+            yq e ".image.tag = \"$TAG\"" -i "$FILE"
+            echo "Cat $FILE"
+            cat "$FILE"
+          done
+
+      - name: Validate GitOps structure
+        run: ./scripts/gitops/validate_gitops.sh
+
+      - name: Commit changes
+        run: |
+          ENV="${{ env.ENV }}"
+          DIR="gitops/envs/$ENV"
+          MSG="[IMAGE UPDATER] Runtime Image Updating Workflow"
+          bash scripts/extra/commit.sh  "$DIR" "$MSG"
