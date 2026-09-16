@@ -1,4 +1,4 @@
-# ## Security Checklist
+# Security Checklist
 
 ### Before deployment
 
@@ -7,8 +7,8 @@
 - [ ] GitHub Actions permissions reviewed
 - [ ] AWS IAM role uses restricted trust policy
 - [ ] Terraform state backend is protected
-- [ ] Container image has been scanned
-- [ ] Dependencies have been checked
+- [ ] Container image are scanned
+- [ ] Dependencies are checked
 - [ ] Kubernetes manifests validated
 - [ ] Production changes reviewed
 
