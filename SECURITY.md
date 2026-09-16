@@ -1,5 +1,15 @@
 # Security Checklist
 
+### Security Framework Alignment
+
+The security controls in KUBAPP can be mapped to common security
+principles such as least privilege, identity-based access, encryption,
+auditability, secure software supply chain practices, and separation
+of duties.
+
+This document describes the controls implemented by the project; it
+does not constitute a formal compliance certification.
+
 ### Before deployment
 
 - [ ] No secrets committed to Git
