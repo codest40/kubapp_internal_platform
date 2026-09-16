@@ -4,6 +4,7 @@ creation_rules:
   - path_regex: gitops/secrets/.*\.ya?ml$
     encrypted_regex: '^(data|stringData)$'
     age: age1scfdeeyeassgvmey569kn5xwtl47gh3v0gqkuu0ndyhaajdr2a6s6dswul
+    # Add SOPS Age public key
 
   # Terraform tfvars files
   - path_regex: iac/.*\.tfvars$
