@@ -10,6 +10,7 @@
  ├── k8s/          # Kubernetes platform configuration layer
  ├── manifests/    # Kubernetes resources via Terraform
  ├── boot/         # Terraform backend bootstrap
+ ├── dns/          # Dedicated DNS backend
  ├── README.md
 ```
 
@@ -17,7 +18,7 @@
 
  This IaC layer follows a 3-tier infrastructure model:
 
- 1. FOUNDATION LAYER (boot)
+ 1. FOUNDATION LAYERS (boot + dns)
  2. INFRASTRUCTURE LAYER (infra)
  3. PLATFORM LAYER (k8s + manifests)
 
