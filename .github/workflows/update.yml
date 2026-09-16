@@ -10,6 +10,8 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      STATE_FILE: "gitops/state/current.json"
 
     steps:
       - name: Generate GitHub App token
@@ -22,7 +24,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          repository: paragon40/kubapp
+          repository: ${{ vars.REPO }}
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
@@ -37,7 +39,7 @@ jobs:
       - name: Retrieve Currect ENV
         run: |
           set -euo pipefail
-          STATE_FILE="gitops/state/current.json"
+          STATE_FILE="${{ env.STATE_FILE }}"
           if [[ ! -f "$STATE_FILE" || ! -s "$STATE_FILE" ]]; then
             echo "❌ State File: $STATE_FILE is Missing or Empty."
             exit 1
@@ -83,10 +85,11 @@ jobs:
           done
 
       - name: Validate GitOps structure
-        run: ./scripts/validate_gitops.sh
+        run: ./scripts/gitops/validate_gitops.sh
 
       - name: Commit changes
         run: |
           ENV="${{ env.ENV }}"
           DIR="gitops/envs/$ENV"
-          bash scripts/commit.sh  "$DIR" "Runtime IMAGE Update"
+          MSG="[IMAGE UPDATER] Runtime Image Updating Workflow"
+          bash scripts/extra/commit.sh  "$DIR" "$MSG"

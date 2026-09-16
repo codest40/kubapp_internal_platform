@@ -35,16 +35,22 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Show inputs
+        run: |
+            echo "STACK: ${{ github.event.inputs.stack }}"
+            echo "ENV: ${{ github.event.inputs.env }}"
+            echo "LOCK_ID: ${{ github.event.inputs.lock_id }}"
+
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run unlock script
         run: |
-          chmod +x scripts/unlock_tf.sh
-          ./scripts/unlock_tf.sh \
+          chmod +x scripts/extra/unlock_tf.sh
+          ./scripts/extra/unlock_tf.sh \
             "${{ github.event.inputs.stack }}" \
             "${{ github.event.inputs.env }}" \
             "${{ github.event.inputs.lock_id }}"

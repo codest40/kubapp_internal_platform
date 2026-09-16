@@ -1,27 +1,10 @@
-name: Build and Push Docker Images
+name: Build Platform Registry
 
 on:
-  push:
-    paths:
-      - "docker/**"
-
-  pull_request:
-    paths:
-      - "docker/**"
-
   workflow_dispatch:
     inputs:
-      mode:
-        description: Build mode
-        required: false
-        default: cached
-        type: choice
-        options:
-          - cached
-          - fresh
-
       env:
-        description: Env mode
+        description: Target environment
         required: false
         default: dev
         type: choice
@@ -29,489 +12,78 @@ on:
           - dev
           - prod
 
-      service:
-        description: "Optional single service build (empty = all)"
+      manifest:
+        description: CI manifest file
         required: false
-        default: ""
+        default: gitops/state
+        type: string
 
-####################################################
-# PREPARE MATRIX
-####################################################
+      registry:
+        description: Platform registry root directory
+        required: false
+        default: gitops/registry
+        type: string
+
+  workflow_call:
+    inputs:
+      env:
+        description: Target environment
+        required: true
+        type: string
+
+      manifest:
+        description: CI manifest file
+        required: false
+        default: gitops/state
+        type: string
+
+      registry:
+        description: Platform registry root directory
+        required: false
+        default: gitops/registry
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
 jobs:
-  prepare:
+  platform_build:
     runs-on: ubuntu-latest
-
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
-
-      - name: Generate dynamic matrix
-        id: set-matrix
-        run: |
-          MANUAL_SERVICE="${{ github.event.inputs.service }}"
-
-          if [ -n "$MANUAL_SERVICE" ]; then
-            echo "Manual build mode: $MANUAL_SERVICE"
-            SERVICES=$(echo "[\"$MANUAL_SERVICE\"]" | jq -c '.')
-          else
-            SERVICES=$(find docker -mindepth 1 -maxdepth 1 -type d \
-              -not -path "*/\.*" \
-              -not -name "docs" \
-              -not -name "README*" \
-              -printf '%f\n' \
-              | sort \
-              | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          fi
-
-          echo "matrix={\"service\":$SERVICES}" >> $GITHUB_OUTPUT
-
-          ####################################################
-          # PRESERVED LOGIC (FIXED COUNT BUG ONLY)
-          ####################################################
-          if [ "$SERVICES" = "[]" ]; then
-            echo "No services found in docker/"
-            exit 1
-          else
-            COUNT=$(echo "$SERVICES" | jq -r '.[]' | wc -l)
-            echo "Total Services found in docker directory: $COUNT"
-          fi
-
-####################################################
-# BUILD JOB
-####################################################
-  build:
-    needs: prepare
-    runs-on: ubuntu-latest
-    outputs:
-      env: ${{ steps.export.outputs.env }}
-
-    strategy:
-      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
 
     env:
-      REGISTRY: docker.io
-      IMAGE_NAMESPACE: ${{ secrets.DOCKER_USER }}
+      ENV: ${{ inputs.env }}
+      MANIFEST: ${{ inputs.manifest }}
+      REGISTRY: ${{ inputs.registry }}
+      RUN_ID: "${{ github.run_id }}"
+      WORKFLOW_ID: "${{ github.workflow }}"
 
     steps:
-      - name: Generate GitHub App token
-        id: app-token
-        uses: tibdex/github-app-token@v2
-        with:
-          app_id: ${{ secrets.APP_ID_GITHUB }}
-          private_key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
-
-      - name: Checkout repo
+      - name: Checkout KubApp
         uses: actions/checkout@v4
-        with:
-          repository: paragon40/kubapp
-          token: ${{ steps.app-token.outputs.token }}
 
-      - name: Login to Docker Hub
+      - name: Build platform App registry
         run: |
-          echo "${{ secrets.DOCKER_PASS }}" | docker login $REGISTRY \
-            -u "${{ secrets.DOCKER_USER }}" --password-stdin
+          python scripts/platform/build_app_registry.py
 
-      ####################################################
-      # LOAD SOURCE OF TRUTH (FIXED ONLY)
-      ####################################################
-      - name: Load service metadata to github Reg
+      - name: Build platform Service registry
         run: |
-          set -euo pipefail
+          python scripts/platform/build_service_registry.py
 
-          SERVICE="${{ matrix.service }}"
-          CONTEXT="docker/$SERVICE"
-
-          APP_FILE=$(find "$CONTEXT" -maxdepth 1 -type f \
-            \( -name "kubapp.yaml" -o -name "kubapp.yml" \) \
-            -print -quit)
-
-          SECRET_FILE=$(find "$CONTEXT" -maxdepth 1 -type f \
-            \( -name "secrets.yaml" -o -name "secrets.yml" -o -name "secret.yaml" -o -name "secret.yml" \) \
-            -print -quit)
-
-          SERVICE_NAME="$SERVICE"
-          PORT="80"
-
-          ENV="${{ github.event.inputs.env }}"
-          ENV="${ENV:-dev}"
-          NO_VARS=true
-          NO_SECRETS=true
-
-          # strict mode safety
-          : "${NO_SECRETS:=true}"
-
-          if [[ -n "$APP_FILE" && -s "$APP_FILE" ]]; then
-            echo "Using app file: $APP_FILE"
-
-            SERVICE_NAME=$(yq e '.service.name // strenv(SERVICE)' "$APP_FILE")
-            COMPUTE_TYPE=$(yq e '.service.compute' "$APP_FILE")
-
-            PORT=$(yq e '.app.port // 80' "$APP_FILE")
-            ENV=$(yq e '.deploy.env // strenv(ENV)' "$APP_FILE")
-            CONTAINER_UID=$(yq e '.deploy.containerUid' "$APP_FILE")
-            BASE_PATH=$(yq e '.app.basePath' "$APP_FILE")
-            LIVE_PATH=$(yq e '.app.livePath' "$APP_FILE")
-            HEALTH_PATH=$(yq e '.app.healthPath' "$APP_FILE")
-            VOL_ENABLED=$(yq e '.features.topVolume.enabled // false' "$APP_FILE")
-            TMP_ENABLED=$(yq e '.features.tmp.enabled // false' "$APP_FILE")
-            TMP_VOLUME=$(yq e '.storage.volumes[0].name // (strenv(SERVICE) + "-vol")' "$APP_FILE")
-            MNT_VOL=$(yq e '.storage.volumeMounts[0].name // "tmp"' "$APP_FILE")
-            MNT_PATH=$(yq e '.storage.volumeMounts[0].mountPath // "/tmp"' "$APP_FILE")
-            SVC_MONITOR_ENAB=$(yq e '.features.serviceMonitor.enabled // false' "$APP_FILE")
-
-            VAR_COUNT=$(yq e '.runtime.env // {} | length' "$APP_FILE")
-            if [[ "$VAR_COUNT" -gt 0 ]]; then
-              NO_VARS=false
-            fi
-          else
-            echo "No app file found → using defaults"
-          fi
-
-          echo "NO_VARS=$NO_VARS" >> $GITHUB_ENV
-
-          if [[ -n "${SECRET_FILE:-}" && -s "$SECRET_FILE" ]]; then
-            NO_SECRETS=false
-          fi
-
-          echo "NO_SECRETS=$NO_SECRETS" >> $GITHUB_ENV
-          echo "ENV=$ENV" >> $GITHUB_ENV
-          TS="$(date +%s)"
-          TM="$(date +%Y-%m-%d_%H-%M-%S)"
-          NAMESPACE="$ENV"
-          IMAGE="$IMAGE_NAMESPACE/$SERVICE"
-          TAG="$GITHUB_SHA-$TS"
-          IMAGE1="$IMAGE_NAMESPACE/$SERVICE:$GITHUB_SHA-$TS"
-          IMAGE2="$IMAGE_NAMESPACE/$SERVICE:latest"
-          echo "IMAGE1=$IMAGE1" >> $GITHUB_ENV
-          echo "IMAGE2=$IMAGE2" >> $GITHUB_ENV
-
-          DIR="test/$ENV/$SERVICE"
-          echo "DIR=$DIR" >> $GITHUB_ENV
-          mkdir -p "$DIR"
-          FILE="$DIR/$SERVICE.json"
-
-          echo "================================="
-          echo "SERVICE_NAME: $SERVICE_NAME"
-          echo "BUILD_NAME   : $SERVICE"
-          echo "IMAGE1       : $IMAGE1"
-          echo "IMAGE2       : $IMAGE2"
-          echo "CONTEXT     : $CONTEXT"
-          echo "REGISTRY    : $REGISTRY"
-          echo "FILE        : $FILE"
-          echo "================================="
-
-          jq -n \
-            --arg service "$SERVICE_NAME" \
-            --arg type "App" \
-            --arg compute "$COMPUTE_TYPE" \
-            --arg context "$CONTEXT" \
-            --arg image1 "$IMAGE" \
-            --arg image2 "$IMAGE2" \
-            --arg tag "$TAG" \
-            --arg registry "$REGISTRY" \
-            --arg namespace "$NAMESPACE" \
-            --arg env "$ENV" \
-            --argjson port "$PORT" \
-            --argjson container_uid "$CONTAINER_UID" \
-            --arg health_path "$HEALTH_PATH" \
-            --arg live_path "$LIVE_PATH" \
-            --arg base_path "$BASE_PATH" \
-            --argjson svc_monitor_enab "$(jq -n "$SVC_MONITOR_ENAB")" \
-            --argjson vol_enab "$(jq -n "$VOL_ENABLED")" \
-            --argjson tmp_enab "$(jq -n "$TMP_ENABLED")" \
-            --arg tmp_volume "$TMP_VOLUME" \
-            --arg mount_vol "$MNT_VOL" \
-            --arg mount_path "$MNT_PATH" \
-            --argjson no_vars "$(jq -n "$NO_VARS")" \
-            --argjson no_secrets "$(jq -n "$NO_SECRETS")" \
-            --arg created_at "$TM" \
-            '{
-              service: $service,
-              type: $type,
-              computeType: $compute,
-              context: $context,
-              image: $image1,
-              image2: $image2,
-              tag: $tag,
-              registry: $registry,
-              namespace: $namespace,
-              env: $env,
-              port: $port,
-              containerUid: $container_uid,
-              basePath: $base_path,
-              healthPath: $health_path,
-              livePath: $live_path,
-              svc_monitor_enabled: $svc_monitor_enab,
-              volumes_enabled: $vol_enab,
-              tmp_enabled: $tmp_enab,
-              tmp_volume: $tmp_volume,
-              mount_vol: $mount_vol,
-              mount_path: $mount_path,
-              NO_VARS: $no_vars,
-              NO_SECRETS: $no_secrets,
-              CREATED_AT: $created_at
-            }' > "$FILE"
-
-          echo "Generated manifest for $SERVICE"
-
-      ####################################################
-      # BUILD
-      ####################################################
-      - name: Build Docker image
+      - name: Validate platform registry
         run: |
-          MODE="${{ github.event.inputs.mode }}"
-          MODE=${MODE:-cached}
+          python scripts/platform/validate_registry.py
 
-          IMAGE1="${{ env.IMAGE1 }}"
-          IMAGE2="${{ env.IMAGE2 }}"
-          CONTEXT="docker/${{ matrix.service }}"
-
-          if [ "$MODE" = "fresh" ]; then
-            echo "Fresh build (no cache)"
-            docker build --no-cache -t "$IMAGE1" "$CONTEXT"
-            docker build --no-cache -t "$IMAGE2" "$CONTEXT"
-          else
-            echo "Cached build"
-            docker build -t "$IMAGE1" "$CONTEXT"
-            docker build -t "$IMAGE2" "$CONTEXT"
-          fi
-
-      ####################################################
-      # PUSH
-      ####################################################
-      - name: Push image
+      - name: Save Platform State For Downwards
         run: |
-          IMAGE1="${{ env.IMAGE1 }}"
-          IMAGE2="${{ env.IMAGE2 }}"
-          docker push "$IMAGE1"
-          docker push "$IMAGE2"
+         python scripts/platform/create_latest_state.py
 
-      - name: Upload registry artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: registry-${{ matrix.service }}
-          path: "${{ env.DIR }}"
-
-
-      - name: Export env for commit job
-        id: export
-        run: |
-          ENV="${{ env.ENV }}"
-          echo "env=$ENV" >> $GITHUB_OUTPUT
-
-####################################################
-# COMMIT JOB
-####################################################
-  commit:
-    needs: build
-    runs-on: ubuntu-latest
-    concurrency:
-      group: using-commit
-      cancel-in-progress: false
-
-    steps:
-      - name: Generate GitHub App token
-        id: app-token
-        uses: tibdex/github-app-token@v2
-        with:
-          app_id: ${{ secrets.APP_ID_GITHUB }}
-          private_key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
-
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          fetch-depth: 0
-
-      - name: Confirm content of Each file in original folder
-        run: |
-          echo "===== ORIGINAL REGISTRY ====="
-          find gitops/registry -type f | while read -r file; do
-            echo "=========== $file ==========="
-            cat "$file"
-            echo
-          done
-
-      - name: Download registry artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name:  Ensure artifact Not empty
+      - name: Commit platform registry
         run: |
           set -euo pipefail
-          if [ ! -d artifacts ]; then
-            echo "❌ artifacts directory missing"
-            exit 1
-          fi
+          DIR="gitops"
+          MSG="[PLATFORM-BUILD] Update platform registry from CI"
+          bash scripts/extra/commit.sh "$DIR" "$MSG"
 
-          LEN=$(find artifacts -type f | wc -l)
-          if [[ "$LEN" -eq 0 ]]; then
-            echo "❌ Problem!, Downloaded Artifact is Empty o"
-            exit 1
-          fi
-          echo "✅ Artifact contains $LEN files"
-
-      - name: Debug downloaded artifacts
-        run: |
-          echo "=== ARTIFACT TREE ==="
-          find artifacts -type f -print
-
-      - name: Reset registry folder
-        env:
-          ENV: ${{ needs.build.outputs.env }}
-        run: |
-          mv gitops/registry/$ENV temp
-          NEW_DIR="gitops/registry/$ENV"
-          mkdir -p  "$NEW_DIR"
-          echo "NEW_DIR=$NEW_DIR" >> $GITHUB_ENV
-
-      - name: Rebuild registry from artifacts
-        env:
-          ENV: ${{ needs.build.outputs.env }}
-        run: |
-          set -euo pipefail
-          NEW_DIR="${{ env.NEW_DIR }}"
-
-          echo "Copying JSON files into registry..."
-          find artifacts -type f -name "*.json" | while read -r file; do
-            echo "→ $file"
-            cp "$file" "$NEW_DIR"
-          done
-
-          echo "Building Platform/Internal Backend (Observability+ ) Services...."
-          TM="$(date +%Y-%m-%d_%H-%M-%S)"
-
-          for svc in grafana prometheus alertmanager argocd; do
-            case "$svc" in
-              grafana)
-                PORT=3000
-                BACKEND_SERVICE="kube-prometheus-stack-grafana"
-                STACK="monitoring"
-              ;;
-              prometheus)
-                PORT=9090
-                BACKEND_SERVICE="kube-prometheus-stack-prometheus"
-                STACK="monitoring"
-              ;;
-              alertmanager)
-                PORT=9093
-                BACKEND_SERVICE="kube-prometheus-stack-alertmanager"
-                STACK="monitoring"
-              ;;
-              argocd)
-                PORT=8080
-                BACKEND_SERVICE="argocd-server"
-                STACK="argocd"
-              ;;
-            esac
-
-            FILE="$NEW_DIR/${svc}.json"
-
-            echo "→ Building $FILE"
-
-            jq -n \
-              --arg service "$svc" \
-              --arg type "Backend" \
-              --arg stack "$STACK" \
-              --arg backendService "$BACKEND_SERVICE" \
-              --arg env "$ENV" \
-              --argjson port "$PORT" \
-              --arg timestamp "$TM" \
-              '{
-                service: $service,
-                type: $type,
-                stack: $stack,
-                backendService: $backendService,
-                env: $env,
-                port: $port,
-                timestamp: $timestamp
-              }' > "$FILE"
-          done
-
-      - name: Validate registry
-        run: |
-          NEW_DIR="${{ env.NEW_DIR }}"
-          COUNT=$(find "$NEW_DIR" -type f -name "*.json" | wc -l)
-
-          if [ "$COUNT" -eq 0 ]; then
-            echo "❌ Registry is empty after rebuild"
-            exit 1
-          fi
-
-          echo "✅ Registry rebuilt with $COUNT files"
-
-
-      - name: Confirm New Folder content of Each file
-        run: |
-          NEW_DIR="${{ env.NEW_DIR }}"
-          echo "===== DOWNLOADED REGISTRY ====="
-          find "$NEW_DIR" -type f | while read -r file; do
-            echo "=========== $file ==========="
-            cat "$file"
-            echo
-          done
-
-      - name: Delete Old Registry
-        run: |
-          rm -rf -- temp artifacts
-          stat artifacts || echo "artifacts truly gone"
-          for dir in artifacts temp; do
-            if [[ -d "$dir" ]]; then
-              echo "❌ $dir still exists"
-            else
-              echo "✅ $dir deleted"
-            fi
-          done
-
-      - name: Create State file Metadata for Downstream
-        env:
-          ENV: ${{ needs.build.outputs.env }}
-        run: |
-          set -euo pipefail
-          RUN_ID="${{ github.run_id }}"
-          WORKFLOW="${{ github.workflow }}"
-          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          ENV="$ENV"
-          mkdir -p gitops/state
-          jq -n \
-            --arg env "$ENV" \
-            --arg run_id "$RUN_ID" \
-            --arg workflow "$WORKFLOW" \
-            --arg timestamp "$TS" \
-            '{
-              env: $env,
-              run_id: $run_id,
-              workflow: $workflow,
-              timestamp: $timestamp
-            }' > gitops/state/current.json
-
-          echo "file created!"
-          cat gitops/state/current.json
-          STATE_FILE="gitops/state/current.json"
-          echo "STATE_FILE=$STATE_FILE"  >> $GITHUB_ENV
-
-      - name: Commit Metadata
-        run: |
-          set -euo pipefail
-          bash scripts/commit.sh "$DIR" "$STATE" "From Build Pipeline"
-        env:
-          DIR: "gitops/registry"
-          STATE: "gitops/state"
-
-      - name: Debug
-        run: |
-          git ls-files | grep artifacts || echo "Artifact Correctly NOT TRACKED Anymore!"
-
-      - name: finally
-        run: |
-          echo "✅ Build Finished"
-
+      - name: Platform build complete
+        run: echo "Platform registry build completed successfully"

@@ -1,6 +1,11 @@
 name: Remove Orphan Apps
 
 on:
+  workflow_run:
+    workflows: ["Add New Apps", "Remove Service From Ingress"]
+    types:
+      - completed
+
   workflow_dispatch:
     inputs:
       services:
@@ -29,6 +34,7 @@ concurrency:
 
 jobs:
   remove:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -42,119 +48,34 @@ jobs:
           wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
 
+      - name: Collect Supplied Values
+        run: |
+          echo "ENV=${{ github.event.inputs.env || 'dev' }}" >> "$GITHUB_ENV"
+          echo "SERVICES=${{ github.event.inputs.services }}" >> "$GITHUB_ENV"
+          if [[ -n "$SERVICES" ]]; then
+              echo "SERVICES: $SERVICES"
+          fi
+
       - name: Safety checks
         run: |
           set -euo pipefail
-          ENV="${{ github.event.inputs.env || 'dev' }}"
-
           echo "ENV=$ENV"
 
           if [[ "${{ github.event_name }}" == "push" && "$ENV" == "prod" ]]; then
             echo "❌ PROD automatic cleanup blocked on push"
             exit 1
           fi
+          if [[ "$ENV" == "prod" && -n "$SERVICES" ]]; then
+            echo "❌ PROD manual delete blocked"
+            exit 1
+          fi
 
-      - name: Resolve mode
-        id: mode
+      - name: Remove orphan apps
+        env:
+          ENV: "${{ env.ENV }}"
+          SERVICES: "${{ env.SERVICES }}"
         run: |
-          if [[ "${{ github.event.inputs.services }}" != "" ]]; then
-            echo "mode=manual" >> $GITHUB_OUTPUT
-          else
-            echo "mode=auto" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Remove Orphan Apps
-        run: |
-          set -euo pipefail
-
-          ENV="${{ github.event.inputs.env || 'dev' }}"
-          ING_FILE="gitops/ingress/${ENV}/values.yaml"
-          APP_BASE="gitops/envs/$ENV"
-
-          echo "=============================="
-          echo " ORPHAN APP CLEANUP ENGINE"
-          echo " ENV: $ENV"
-          echo " MODE: ${{ steps.mode.outputs.mode }}"
-          echo "=============================="
-
-          VALID_APPS=$(yq '.services[].name' "$ING_FILE")
-
-          echo "Valid apps:"
-          echo "$VALID_APPS"
-          echo ""
-
-          ########################################
-          # MANUAL MODE
-          ########################################
-          if [[ "${{ steps.mode.outputs.mode }}" == "manual" ]]; then
-
-            RAW="${{ github.event.inputs.services }}"
-            SERVICES=$(echo "$RAW" | tr ',' ' ' | xargs -n1 | sort -u)
-
-            for app in $SERVICES; do
-
-              APP_PATH="$APP_BASE/$app"
-
-              echo ""
-              echo "Checking manual delete: $app"
-
-              if [[ ! -d "$APP_PATH" ]]; then
-                echo "SKIP: not found $APP_PATH"
-                continue
-              fi
-
-              if echo "$VALID_APPS" | grep -qx "$app"; then
-                echo "BLOCKED: exists in ingress"
-                continue
-              fi
-
-              if [[ "$ENV" == "prod" ]]; then
-                echo "BLOCKED: prod manual delete"
-                continue
-              fi
-
-              echo "Deleting: $APP_PATH"
-              rm -rf "$APP_PATH"
-
-            done
-
-            exit 0
-          fi
-
-          ########################################
-          # AUTO MODE (RECONCILIATION)
-          ########################################
-          if [[ ! -d "$APP_BASE" ]]; then
-            echo "No env folder: $APP_BASE"
-            exit 0
-          fi
-
-          APP_DIRS=$(ls "$APP_BASE" || true)
-
-          for app in $APP_DIRS; do
-
-            APP_PATH="$APP_BASE/$app"
-
-            if [[ ! -f "$APP_PATH/values.yaml" ]]; then
-              continue
-            fi
-
-            if echo "$VALID_APPS" | grep -qx "$app"; then
-              echo "KEEP: $app"
-              continue
-            fi
-
-            echo "ORPHAN: $app"
-
-            if [[ "$ENV" == "prod" ]]; then
-              echo "BLOCKED: prod delete"
-              continue
-            fi
-
-            echo "Deleting: $APP_PATH"
-            rm -rf "$APP_PATH"
-
-          done
+          bash scripts/gitops/remove_orphan_apps.sh
 
       - name: Check Ingress
         run: |
@@ -164,15 +85,14 @@ jobs:
           done
 
       - name: Validate GitOps
-        run: bash scripts/validate_gitops.sh
+        run: bash scripts/gitops/validate_gitops.sh
 
       - name: Commit changes
         run: |
           set -euo pipefail
-          ENV="${{ github.event.inputs.env }}"
+
           MSG="[REMOVE-APP]: orphan cleanup in $ENV"
-          DIR="gitops/envs"
-          bash scripts/commit.sh "$DIR" "$MSG"
+          bash scripts/extra/commit.sh "gitops/envs" "$MSG"
 
       - name: Confirm Failure
         if: failure()

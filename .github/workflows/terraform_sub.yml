@@ -1,0 +1,122 @@
+name: Terraform Individual Runs (For Debug)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Action to run
+        required: true
+        type: choice
+        options: [apply, destroy]
+      stack:
+        description: Which Stack
+        required: true
+        type: choice
+        options: [infra, k8s]
+
+      env:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.event.inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  apply_destroy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install SOPS
+        run: |
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup AGE key
+        run: |
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+
+      - name: Set ENV
+        run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
+
+      - name: Apply K8s
+        if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.stack == 'k8s'}}
+        working-directory: iac/k8s
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          terraform validate
+          sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+          terraform plan -var-file=k8s.tfvars -out=tfplan
+          terraform apply -auto-approve tfplan
+
+      - name: Apply Infra
+        if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.stack == 'infra'}}
+        working-directory: iac/infra
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          terraform validate
+          sops -d envs/${ENV}/infra.tfvars.enc > infra.tfvars
+          terraform plan -var-file=infra.tfvars -out=tfplan
+          terraform apply -auto-approve tfplan
+
+
+
+      - name: Destroy K8s
+        if: ${{ github.event.inputs.action == 'destroy' && github.event.inputs.stack == 'k8s'}}
+        working-directory: iac/k8s
+        run: |
+          set -euo pipefail
+          #bash ../../scripts/clean_cluster.sh
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          terraform validate
+          sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+          terraform destroy -auto-approve -var-file=k8s.tfvars
+
+      - name: Destroy Infra
+        if: ${{ github.event.inputs.action == 'destroy' && github.event.inputs.stack == 'infra'}}
+        working-directory: iac/infra
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
+          terraform validate
+          sops -d envs/${ENV}/infra.tfvars.enc > infra.tfvars
+          terraform destroy -auto-approve -var-file=infra.tfvars
+          echo "✅ Destory complete.. Remvoing Logs.."
+
+      - name: Check Logs
+        run: bash scripts/cleanups/cleanup_logs.sh
+
+      - name: Verify Cleanups
+        env:
+          CLUSTER_NAME: "kubapp-dev"
+          AWS_REGION: "${{ secrets.AWS_REGION }}"
+        run: bash scripts/cleanups/verify_cleanup.sh
+
+      - name: Final cleaning if still exists
+        env:
+          CLUSTER_NAME: "kubapp-dev"
+          AWS_REGION: "${{ secrets.AWS_REGION }}"
+        run: bash scripts/cleanups/clean_final.sh

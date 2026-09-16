@@ -1,14 +1,20 @@
 name: Runtime Verification
 
 on:
+  workflow_dispatch:
+
   workflow_run:
     workflows:
       - "Runtime Image Update"
-      - "Add New App (GitOps Provisioning)"
-      - "Remove App"
+      - "Add New Apps"
+      - "Remove Orphan App"
     types: [completed]
 
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
 
 permissions:
   id-token: write
@@ -20,9 +26,6 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      ####################################################
-      # AUTH
-      ####################################################
       - name: Generate GitHub App token
         id: app-token
         uses: tibdex/github-app-token@v2
@@ -40,15 +43,15 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup kubeconfig
         run: |
-          set -e
+          set -euo pipefail
 
           aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
+            --region "${{ vars.AWS_REGION }}" \
             --name kubapp-dev
 
           export KUBECONFIG=~/.kube/config
@@ -57,10 +60,6 @@ jobs:
 
           kubectl cluster-info
 
-
-      ####################################################
-      # INSTALL TOOLS
-      ####################################################
       - name: Install dependencies
         run: |
           set -euo pipefail
@@ -68,20 +67,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-          # kubectl
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
 
-          # argocd
           curl -sSL -o argocd \
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x argocd
           sudo mv argocd /usr/local/bin/
 
-      ####################################################
-      # LOAD STATE
-      ####################################################
       - name: Load ENV from state
         run: |
           set -euo pipefail
@@ -100,103 +94,57 @@ jobs:
             exit 1
           fi
 
-          echo "ENV=$ENV" >> $GITHUB_ENV
+          environment="${{ inputs.env }}"
+          if [[ -n "$environment" && "$environment" != "$ENV" ]]; then
+            echo "❌ Env Value supplied via workflow call differs from state Env"
+            echo "ENV Supplied: $environment"
+            exit 1
+          fi
+
+          echo "ENV=$ENV" >> "$GITHUB_ENV"
           echo "Detected ENV: $ENV"
 
-      ####################################################
-      # PRECHECKS
-      ####################################################
       - name: Run prechecks
         run: |
-          bash scripts/prechecks.sh "${{ env.ENV }}"
+          set -euo pipefail
 
-      ####################################################
-      # VERIFY RUNTIME
-      ####################################################
-      - name: Print secrets
-        run: |
-          echo "SERVER=${{ secrets.ARGOCD_SERVER }}"
+          bash scripts/gitops/prechecks.sh
 
       - name: Run postchecks (deep verification)
         env:
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
           ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
         run: |
+          set -euo pipefail
+
           ENV="${{ env.ENV }}"
-          #DOM="${{ secrets.DOMAIN }}"
-          DOM="rundailytest.online"
+          DOM="${{ vars.DOMAIN }}"
+
           export ARGOCD_OPTS="--server $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN"
-          bash scripts/postchecks.sh "$ENV" "$DOM"
+          bash scripts/gitops/postchecks.sh "$ENV" "$DOM"
 
       # FAILURE HANDLER
       - name: Suggest rollback
         if: failure()
         run: |
+          set -euo pipefail
+
           ENV="${{ env.ENV }}"
-          git fetch --tags
 
-          PREV=$(git tag --list "stable-${ENV}-*" --sort=-creatordate | sed -n '2p')
-
-          if [[ -n "$PREV" ]]; then
-            echo "⚠️ Rollback recommended:"
-            echo "git checkout $PREV"
-          else
-            echo "⚠️ No previous stable tag found"
-          fi
+          echo "======================================"
+          echo "⚠️ RUNTIME VERIFICATION FAILED"
+          echo "======================================"
+          echo "Environment: $ENV"
+          echo ""
+          echo "The deployment failed runtime verification."
+          echo ""
+          echo "Rollback should use the latest manually"
+          echo "promoted stable deployment for this environment."
+          echo ""
+          echo "Run:"
+          echo "  Activate Pipeline Workflows"
+          echo "  Environment: $ENV"
+          echo "  Mode: rollback"
+          echo ""
+          echo "No stable tag or deployment state was modified."
           exit 0
-
-      - name: Create Snapshot for Commit Tag
-        run: |
-          set -euo pipefail
-          ENV="${{ env.ENV }}"
-          COMMIT="$(git rev-parse HEAD)"
-          RUN_ID="${{ github.run_id }}"
-          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          DATE="$(date +%Y%m%d-%H%M%S)"
-          SERVICE_COUNT=$(find gitops/registry/$ENV -name "*.json" | wc -l)
-
-          DIR="snapshots/deploys"
-          FILE="$DIR/${ENV}-${DATE}.json"
-          mkdir -p "$DIR"
-
-          jq -n \
-            --arg env "$ENV" \
-            --arg commit "$COMMIT" \
-            --arg run_id "$RUN_ID" \
-            --arg services "$SERVICE_COUNT" \
-            --arg time "$TS" \
-          '{
-              env: $env,
-              commit: $commit,
-              run_id: $run_id,
-              services: ($services | tonumber),
-              timestamp: $time
-           }' > "$FILE"
-
-           echo "SNAPSHOT_FILE=$FILE" >> $GITHUB_ENV
-           echo "Snapshot created:"
-           cat "$FILE"
-
-      - name: Tag Commit as stable
-        run: |
-          set -euo pipefail
-          ENV="${{ env.ENV }}"
-          COMMIT="$(git rev-parse HEAD)"
-          TIME="$(date +%Y%m%d-%H%M%S)"
-          SHORT="$(git rev-parse --short HEAD)"
-          TAG="stable-${ENV}-${TIME}-${SHORT}"
-
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
-          git tag -a "$TAG" -m "Stable deployment: [$ENV] || Commit=$COMMIT || Run_ID=${{ github.run_id }} || time=$TIME"
-          git push origin "$TAG"
-          echo "TAG=$TAG" >> $GITHUB_ENV
-          echo "✅ Stable tag created: $TAG"
-
-
-      - name: Upload deployment snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-snapshot
-          path: ${{ env.SNAPSHOT_FILE }}

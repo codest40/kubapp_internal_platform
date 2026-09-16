@@ -1,6 +1,12 @@
 name: Argocd And Gitops Bootstrap
 
 on:
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
+
   workflow_dispatch:
     inputs:
       env:
@@ -17,8 +23,7 @@ permissions:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
-    environment: development
-
+    environment: dev
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -26,8 +31,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Install SOPS
         run: |
@@ -45,61 +50,34 @@ jobs:
             exit 1
           }
 
-          echo "============================================"
-          echo "Running DEBUG: "
-          #which sops
-          #file $(which sops)
-          #head -5 $(which sops)
-          # echo "Check AWS credentials"
-          # aws sts get-caller-identity
-
-          echo "============================================"
-
-      # --------------------------------
-      #  Setup kubeconfig (EKS access)
-      # --------------------------------
       - name: Setup kubeconfig
         run: |
           set -e
 
           aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
+            --region ${{ vars.AWS_REGION }} \
             --name kubapp-dev
 
           export KUBECONFIG=~/.kube/config
-
           echo "✅ kubeconfig created"
-
           kubectl cluster-info
 
       - name: Check
         run: |
           set -e
-          echo "=== kubeconfig ==="
-          cat ~/.kube/config || true
           echo "=== auth test ==="
           kubectl auth can-i get pods -A || true
 
       - name: Check Readiness
-        run: bash scripts/check_cluster.sh
+        run: bash scripts/gitops/check_cluster.sh
 
       - name: Apply ArgoCD GitHub App secret
         run: |
-          set -e
-
-          SECRET_FILES=$(find gitops/secrets -type f -name "*.yaml" -print)
-          while IFS= read -r one; do
-              DECRYPTED="decrypted-$(basename "$one")"
-              echo "Decrypting secret file: $one"
-              sops -d "$one" > "$DECRYPTED"
-              kubectl apply --validate=false -f "$DECRYPTED"
-              echo "✅ $one ArgoCD secret applied from Sops"
-          done <<< "$SECRET_FILES"
+          python scripts/gitops/apply_secrets.py
         env:
            PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
            APP_ID: ${{ secrets.APP_ID_GITHUB }}
-           REPO_URL: ${{ secrets.REPO_URL }}
-           BASE_FILE: "$BASE_FILE"
+           REPO_URL: ${{ vars.REPO_URL }}
 
       - name: Verify ArgoCD namespace access
         run: kubectl get ns argocd
@@ -135,11 +113,13 @@ jobs:
             -n kube-system \
             --create-namespace
 
-      - name: Make script executable
-        run: chmod +x scripts/bootstrap_gitops.sh
-
       - name: Run GitOps bootstrap
-        run: bash scripts/bootstrap_gitops.sh
+        env:
+          REPO_URL: "https://github.com/${{ github.repository }}.git"
+        run:  |
+          echo "REPO_URL=$REPO_URL"
+          chmod +x scripts/gitops/bootstrap_gitops.sh
+          bash scripts/gitops/bootstrap_gitops.sh
 
       - name: Get Metadata from Terraform
         working-directory: iac/infra
@@ -148,27 +128,44 @@ jobs:
         run: |
           set -euo pipefail
           terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
-          CERT_ARN=$(terraform output -raw main_cert_arn 2>/dev/null || true)
+          DOMAIN=$(terraform output -raw domain 2>/dev/null || true)
+          CERT_ARN=$(terraform output -raw cert_arn 2>/dev/null || true)
+          ZONE_ID=$(terraform output -raw dns_zone_id 2>/dev/null || true)
+
+          if [[ -z "$DOMAIN" ]]; then
+            echo "❌ DOMAIN is empty"
+            exit 1
+          fi
 
           if [[ -z "$CERT_ARN" ]]; then
             echo "❌ CERT ARN is empty"
             exit 1
           fi
 
+          if [[ -z "$ZONE_ID" ]]; then
+            echo "❌ ZONE_ID is empty"
+            exit 1
+          fi
+
+          echo "DOMAIN Found: $DOMAIN"
+          echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
           echo "CERT_ARN Found: $CERT_ARN"
           echo "CERT_ARN=$CERT_ARN" >> $GITHUB_ENV
+          echo "ZONE_ID Found: $ZONE_ID"
+          echo "ZONE_ID=$ZONE_ID" >> $GITHUB_ENV
 
       - name: Ensure Route53 is synced
         env:
           ENV: "${{ github.event.inputs.env }}"
-          DOMAIN: "${{ secrets.DOMAIN }}"
+          DOMAIN: "${{ env.DOMAIN }}"
           CERT_ARN: "${{ env.CERT_ARN }}"
+          ZONE_ID: "${{ env.ZONE_ID }}"
           AWS_REGION: "${{ env.AWS_REGION }}"
         run: |
           set -euo pipefail
           for i in {1..8}; do
             echo "Setting up route53 for Domain if new..."
-            if bash scripts/sync_route53.sh; then
+            if bash scripts/gitops/sync_route53.sh; then
               echo "✅ Success on attempt $i"
               break
             else

@@ -1,4 +1,4 @@
-name: Activate Pipeline
+name: Activate Pipeline Workflows
 
 on:
   workflow_dispatch:
@@ -7,46 +7,104 @@ on:
         required: true
         default: dev
         type: choice
-        options: [dev, prod]
+        options:
+          - dev
+          - prod
 
       mode:
         required: true
         default: full
         type: choice
-        options: [full, build, deploy, cleanup]
+        options:
+          - full
+          - build
+          - rollback
+          - cleanup
 
 permissions:
   contents: write
-  actions: write
+  actions: read
+  id-token: write
+  pull-requests: write
+  security-events: write
 
 concurrency:
   group: activate-pipeline-${{ inputs.env }}
   cancel-in-progress: false
 
 jobs:
-  trigger:
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: Dispatch context
-        run: |
-          echo "ENV=${{ inputs.env }}"
-          echo "MODE=${{ inputs.mode }}"
+  ci:
+    if: ${{ inputs.mode == 'full' || inputs.mode == 'build' }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      env: ${{ inputs.env }}
+    secrets: inherit
 
-      - name: Trigger Build
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'build' }}
-        run: |
-          gh workflow run build.yml -f env=${{ inputs.env }}
-          gh workflow run validate_gitops.yml -f env=${{ inputs.env }}
+  build:
+    if: ${{ inputs.mode == 'full' || inputs.mode == 'build' }}
+    needs: ci
+    uses: ./.github/workflows/build.yml
+    with:
+      env: ${{ inputs.env }}
+    secrets: inherit
 
-      - name: Trigger Deploy
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'deploy' }}
-        run: |
-          gh workflow run setup_argocd.yml -f env=${{ inputs.env }}
-          gh workflow run verify_runtime.yml -f env=${{ inputs.env }}
+  deploy:
+    if: ${{ inputs.mode == 'full' || inputs.mode == 'build' }}
+    needs: build
+    uses: ./.github/workflows/add_new_app.yml
+    with:
+      env: ${{ inputs.env }}
+    secrets: inherit
 
-      - name: Trigger Cleanup
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'cleanup' }}
-        run: |
-          gh workflow run clean_argocd.yml -f env=${{ inputs.env }}
+  setup_argocd:
+    if: ${{ inputs.mode == 'full' }}
+    needs: deploy
+    uses: ./.github/workflows/setup_argocd.yml
+    with:
+      env: ${{ inputs.env }}
+    secrets: inherit
 
+  validate_gitops_build:
+    if: ${{ inputs.mode == 'build' }}
+    needs: deploy
+    uses: ./.github/workflows/validate_gitops.yml
+    with:
+      env: ${{ inputs.env }}
+
+  validate_gitops_full:
+    if: ${{ inputs.mode == 'full' }}
+    needs: setup_argocd
+    uses: ./.github/workflows/validate_gitops.yml
+    with:
+      env: ${{ inputs.env }}
+
+  verify_runtime:
+    if: ${{ inputs.mode == 'full' }}
+    needs: validate_gitops_full
+    uses: ./.github/workflows/verify_runtime.yml
+    with:
+      env: ${{ inputs.env }}
+    secrets: inherit
+
+  cleanup_only:
+    if: ${{ inputs.mode == 'cleanup' }}
+    uses: ./.github/workflows/clean_argocd.yml
+    with:
+      env: ${{ inputs.env }}
+    secrets: inherit
+
+  latest_stable_deploy:
+    if: ${{ inputs.mode == 'rollback' }}
+    uses: ./.github/workflows/get_stable_deploy.yml
+    with:
+      env: ${{ inputs.env }}
+
+  rollback:
+    if: ${{ inputs.mode == 'rollback' }}
+    needs: latest_stable_deploy
+    uses: ./.github/workflows/rollback.yml
+    with:
+      env: ${{ inputs.env }}
+      commit: ${{ needs.latest_stable_deploy.outputs.stable_commit }}
+      tag: ${{ needs.latest_stable_deploy.outputs.stable_tag }}

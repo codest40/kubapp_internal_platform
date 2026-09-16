@@ -66,7 +66,7 @@ jobs:
           while read -r svc; do
             [[ -z "$svc" ]] && continue
             echo "Removing $svc from ingress..."
-            bash scripts/register_new_svc.sh remove "$svc" "$ENV"
+            bash scripts/gitops/register_new_svc.sh remove "$svc" "$ENV"
           done <<< "$CLEANED"
 
       - name: Validate ingress YAML
@@ -77,13 +77,13 @@ jobs:
       - name: Validate GitOps
         run: |
           set -euo pipefail
-          bash scripts/validate_gitops.sh
+          bash scripts/gitops/validate_gitops.sh
 
       - name: Commit changes
         run: |
           set -euo pipefail
           MSG="[REMOVE-SVC]: removed services from ingress (${ENV})"
-          bash scripts/commit.sh "gitops/ingress" "$MSG"
+          bash scripts/extra/commit.sh "gitops/ingress" "$MSG"
 
       - name: Done
         run: |

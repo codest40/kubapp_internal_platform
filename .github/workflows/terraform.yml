@@ -91,10 +91,7 @@ jobs:
         run: echo "ENV=${{ github.event.inputs.env }}" >> $GITHUB_ENV
 
 
-      # =====================================================
       # TERRAFORM STATIC VALIDATION
-      # =====================================================
-
       - name: Terraform Format Check
         working-directory: ${{ matrix.dir }}
         run: terraform fmt -check -recursive
@@ -117,10 +114,6 @@ jobs:
         run: |
           terraform validate
 
-      # =====================================================
-      # TFLINT
-      # =====================================================
-
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
         with:
@@ -133,9 +126,6 @@ jobs:
           tflint \
             --minimum-failure-severity=warning
 
-      # =====================================================
-      # Trivy
-      # =====================================================
       - name: Install Trivy
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
@@ -156,10 +146,6 @@ jobs:
             --ignorefile ${{ github.workspace }}/.trivyignore \
             --exit-code 1
 
-      # =====================================================
-      # CHECKOV
-      # =====================================================
-
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
@@ -169,10 +155,6 @@ jobs:
           soft_fail: false
           config_file: .checkov.yaml
           output_format: sarif
-
-      # =====================================================
-      # INFRACOST
-      # =====================================================
 
       - name: Setup Infracost
         continue-on-error: true
@@ -213,9 +195,7 @@ jobs:
           echo "Directory: ${{ matrix.dir }}"
           echo "======================================"
 
-  # =====================================================
   # INFRA PLAN
-  # =====================================================
   infra_plan:
     if: ${{ github.event.inputs.action == 'apply' }}
     name: Infra - Plan
@@ -228,9 +208,6 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Check Oidc issue
-        run: echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN
-
       - name: Install SOPS
         run: |
           curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
@@ -240,8 +217,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -256,14 +233,6 @@ jobs:
         working-directory: iac/infra
         run: terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
 
-      - name: Debug ENV and others
-        working-directory: iac/infra
-        run: |
-          echo "ENV=$ENV"
-          ls -la envs/${ENV}/
-          echo "Cheking config file.."
-          cat envs/${ENV}/backend.hcl
-
       - name: Terraform Validate
         working-directory: iac/infra
         run: |
@@ -277,7 +246,8 @@ jobs:
 
       - name: Terraform Plan
         working-directory: iac/infra
-        run: terraform plan -out=infra.plan -var-file=infra.tfvars
+        run: |
+            terraform plan -out=infra.plan -var-file=infra.tfvars
 
       - name: Upload Infra Plan
         uses: actions/upload-artifact@v4
@@ -286,15 +256,13 @@ jobs:
           path: iac/infra/infra.plan
 
 
-# =========================================================
 # INFRA APPROVAL (PROD ONLY)
-# =========================================================
   infra_approve:
     if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.env == 'prod' }}
     name: Infra - Approval
     needs: infra_plan
     runs-on: ubuntu-latest
-    environment: production
+    environment: prod
 
     steps:
       - name: Download Plan
@@ -307,9 +275,7 @@ jobs:
         run: terraform show infra-plan/infra.plan
 
 
-# =========================================================
 # INFRA APPLY
-# =========================================================
   infra_apply:
     name: Infra - Apply
     needs: infra_plan
@@ -332,8 +298,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -354,12 +320,11 @@ jobs:
 
       - name: Apply Infra
         working-directory: iac/infra
-        run: terraform apply -auto-approve -var-file=infra.tfvars
+        run: |
+             terraform apply -auto-approve -var-file=infra.tfvars
 
 
-# =========================================================
 # K8S PLAN
-# =========================================================
   k8s_plan:
     if: ${{ github.event.inputs.action == 'apply' }}
     name: K8s - Plan
@@ -381,8 +346,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -406,11 +371,16 @@ jobs:
 
       - name: Load tfvars (k8s)
         working-directory: iac/k8s
-        run: sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+        run: |
+            sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
+            #BACKEND_FILE="$ROOT/iac/k8s/envs/$ENV/backend.hcl"
+            #TF_STATE_BUCKET="$(awk -F'"' '/^bucket[[:space:]]*=/{print $2}' "$BACKEND_FILE")"
+            #echo "TF_STATE_BUCKET=$TF_STATE_BUCKET" >> GITHUB_ENV
 
       - name: Plan K8s
         working-directory: iac/k8s
-        run: terraform plan -out=k8s.plan -var-file=k8s.tfvars
+        run:  |
+         terraform plan -out=k8s.plan -var-file=k8s.tfvars
 
       - name: Upload Plan
         uses: actions/upload-artifact@v4
@@ -419,15 +389,12 @@ jobs:
           path: iac/k8s/k8s.plan
 
 
-# =========================================================
-# K8S APPROVAL (PROD ONLY)
-# =========================================================
   k8s_approve:
     if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.env == 'prod' }}
     name: K8s - Approval
     needs: k8s_plan
     runs-on: ubuntu-latest
-    environment: production
+    environment: prod
 
     steps:
       - name: Download Plan
@@ -440,15 +407,14 @@ jobs:
         run: terraform show k8s-plan/k8s.plan
 
 
-# =========================================================
-# K8S APPLY
-# =========================================================
-
   k8s_apply:
     name: K8s - Apply
     needs: k8s_plan
     if: ${{ github.event.inputs.action == 'apply' }}
     runs-on: ubuntu-latest
+    env:
+      PROJECT: "kubapp"
+
     environment: ${{ github.event.inputs.env }}
 
     steps:
@@ -466,8 +432,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -486,13 +452,20 @@ jobs:
         working-directory: iac/k8s
         run: sops -d envs/${ENV}/k8s.tfvars.enc > k8s.tfvars
 
+      - name: Configure kubeconfig
+        run: |
+          EKS_CLUSTER_NAME="${{ env.PROJECT }}-${ENV}"
+          echo "EKS cluster: $EKS_CLUSTER_NAME"
+          aws eks update-kubeconfig \
+            --region "${{ vars.AWS_REGION }}"  \
+            --name "$EKS_CLUSTER_NAME"
+          kubectl get nodes
+
       - name: Apply K8s
         working-directory: iac/k8s
-        run: terraform apply -auto-approve -var-file=k8s.tfvars
+        run: |
+          terraform apply -auto-approve -var-file=k8s.tfvars
 
-# =========================================================
-# Manifest PLAN
-# =========================================================
   Manifests_plan:
     if: ${{ github.event.inputs.action == 'apply' }}
     name: Manifests - Plan
@@ -514,8 +487,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -552,15 +525,13 @@ jobs:
           path: iac/manifests/manifests.plan
 
 
-# =========================================================
 # Manifest APPROVAL
-# =========================================================
   Manifests_approve:
     if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.env == 'prod' }}
     name: Manifests - Approval
     needs: Manifests_plan
     runs-on: ubuntu-latest
-    environment: production
+    environment: prod
 
     steps:
       - name: Download Plan
@@ -572,10 +543,6 @@ jobs:
       - name: Show Plan
         run: terraform show manifests-plan/manifests.plan
 
-
-# =========================================================
-# MANIFESTS APPLY
-# =========================================================
 
   Manifests_apply:
     name: Manifests - Apply
@@ -599,8 +566,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -647,8 +614,8 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup AGE key
         run: |
@@ -672,15 +639,21 @@ jobs:
           PROJECT_NAME=$(terraform output -raw project 2>/dev/null || true)
           VPC_ID=$(terraform output -raw vpc_id 2>/dev/null || true)
           AWS_REGION=$(terraform output -raw region 2>/dev/null || true)
+          ZONE_ID=$(terraform output -raw dns_zone_id 2>/dev/null || true)
 
           if [ -z "$CLUSTER_NAME" ]]  || [[ "$CLUSTER_NAME" == *"Error:"* ]]; then
             echo "❌ cluster_name output is missing"
+            exit 1
+          fi
+          if [ -z "$ZONE_ID" ]]  || [[ "$ZONE_ID" == "null" ]]; then
+            echo "❌ DNS Zone ID output is missing"
             exit 1
           fi
 
           echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
           echo "ENV=$ENV_NAME" >> $GITHUB_ENV
           echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+          echo "ZONE_ID=$ZONE_ID" >> $GITHUB_ENV
           echo "PROJECT=$PROJECT_NAME" >> $GITHUB_ENV
           echo "AWS_REGION=$AWS_REGION" >> $GITHUB_ENV
 
@@ -689,13 +662,11 @@ jobs:
         run: |
           set -euo pipefail
           terraform init -reconfigure -backend-config="envs/${ENV}/backend.hcl"
-
-          NAMESPACES=$(terraform output -json namespaces \
-            | jq -r '.[]' \
-            | awk '{printf "\"%s\" ", $0}')
-
-          ARRAY="($NAMESPACES)"
-          echo "NAMESPACES=$ARRAY" >> $GITHUB_ENV
+          NAMESPACES=$(terraform output -json namespaces 2>/dev/null || true)
+          if [[ -z "$NAMESPACES" || "$NAMESPACES" == "null" ]]; then
+            echo "No Terraform-managed namespaces Extracted"
+          fi
+          echo "NAMESPACES=$NAMESPACES" >> $GITHUB_ENV
 
       - name: Connect to EKS cluster
         run: |
@@ -704,7 +675,7 @@ jobs:
             --region "${{ env.AWS_REGION }}"
 
       - name: Cleanup cluster
-        run: bash scripts/clean_cluster.sh
+        run: bash scripts/cleanups/clean_cluster.sh
         env:
           TF_CREATED_NS: "${{ env.NAMESPACES }}"
 
@@ -727,7 +698,7 @@ jobs:
           terraform destroy -auto-approve -var-file=k8s.tfvars
 
       - name: Ensure No Leftovers From k8s
-        run: bash scripts/delete_leftovers.sh
+        run: bash scripts/cleanups/delete_leftovers.sh
         env:
           ENV: ${{ env.ENV }}
           CLUSTER_NAME: ${{ env.CLUSTER_NAME }}
@@ -746,12 +717,12 @@ jobs:
 
       - name: Wipe Away Never-expire Logs Groups
         if: always()
-        run: bash scripts/cleanup_logs.sh
+        run: bash scripts/cleanups/cleanup_logs.sh
 
       - name: Verify Cleanups
         if: always()
         run: |
-          bash scripts/verify_cleanup.sh
+          bash scripts/cleanups/verify_cleanup.sh
 
       - name: Final Conditional Cleanups
         run: |
@@ -760,7 +731,7 @@ jobs:
 
           if [[ -n "$LEFTOVERS" ]]; then
             if [[ "$LEFTOVERS" = "true" ]]; then
-              bash scripts/clean_final.sh
+              bash scripts/cleanups/clean_final.sh
               echo "✅ Final cleanup Done!"
             else
               echo "No Further cleanup required"
@@ -769,9 +740,16 @@ jobs:
             echo "❌ LEFTOVERS Variable Not Discovered"
           fi
 
-      - name: Remove Route53 Config
+      - name: Remove Orphan Domains
+        env:
+          ZONE_ID: ${{ env.ZONE_ID }}
+        run: bash scripts/gitops/remove_orphan_domains.sh
+
+      - name: Remove Route53 DNS App Config
+        env:
+          ZONE_ID: ${{ env.ZONE_ID }}
         run: |
-          SYNC_MODE=destroy bash scripts/sync_route53.sh
+          SYNC_MODE=destroy bash scripts/gitops/sync_route53.sh
 
       - name: Finally
         if: success()

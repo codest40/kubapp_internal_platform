@@ -7,6 +7,11 @@ on:
         description: "Type YES to confirm cluster cleanup"
         required: true
         default: "NO"
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
 
 permissions:
   id-token: write
@@ -21,9 +26,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      ####################################################
-      # SAFETY GATE
-      ####################################################
       - name: Safety confirmation
         run: |
           set -euo pipefail
@@ -36,33 +38,24 @@ jobs:
 
           echo "⚠️ CLEANUP CONFIRMED — PROCEEDING"
 
-      ####################################################
-      # CHECKOUT
-      ####################################################
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # --------------------------------
-      # 2. AWS credentials
-      # --------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Check AWS credentials
         run: aws sts get-caller-identity
 
-      # --------------------------------
-      # 3. Setup kubeconfig (EKS access)
-      # --------------------------------
       - name: Setup kubeconfig
         run: |
           set -e
 
           aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
+            --region ${{ vars.AWS_REGION }} \
             --name kubapp-dev
 
           export KUBECONFIG=~/.kube/config
@@ -79,9 +72,6 @@ jobs:
           echo "=== auth test ==="
           kubectl auth can-i get pods -A || true
 
-      ####################################################
-      # INSTALL KUBECTL
-      ####################################################
       - name: Install kubectl
         run: |
           set -euo pipefail
@@ -90,9 +80,6 @@ jobs:
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
 
-      ####################################################
-      # AWS / KUBECONFIG (OPTIONAL HOOK)
-      ####################################################
       - name: Configure Kubernetes access
         run: |
           set -euo pipefail
@@ -100,19 +87,28 @@ jobs:
           echo "Configure kubeconfig here if needed"
           kubectl version --client
 
-      ####################################################
-      # RUN CLEANUP SCRIPT (UNCHANGED)
-      ####################################################
-      - name: Run cluster cleanup
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+      - name: Extract Terraform-managed Namespaces
+        run: |
+          TF_CREATED_NS=$(terraform output -json namespaces 2>/dev/null || true)
+          if [[ -z "$TF_CREATED_NS" || "$TF_CREATED_NS" == "null" ]]; then
+            echo "No Terraform-managed namespaces Extracted"
+          fi
+          echo "TF_CREATED_NS=$TF_CREATED_NS" >> "$GITHUB_ENV"
+
+      - name: Install jq
         run: |
           set -euo pipefail
-          bash scripts/clean_cluster.sh
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-      ####################################################
-      # POST CHECK (VERIFY CLEAN STATE)
-      ####################################################
+      - name: Run cluster cleanup
+        env:
+          TF_CREATED_NS: ${{ env.TF_CREATED_NS }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          bash scripts/gitops/clean_cluster.sh
+
       - name: Verify cluster state after cleanup
         run: |
           set -euo pipefail

@@ -1,10 +1,11 @@
-name: Add New App (GitOps Provisioning)
+name: Add New Apps
 
 on:
-  workflow_run:
-    workflows: ["Build and Push Docker Images"]
-    types:
-      - completed
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
 
   workflow_dispatch:
     inputs:
@@ -16,6 +17,7 @@ on:
         options: [dev, prod]
 env:
   STATE_FILE: ${{ github.workspace }}/gitops/state/current.json
+  ENV: ${{ inputs.env || 'dev' }}
 
 permissions:
   id-token: write
@@ -28,31 +30,52 @@ concurrency:
 jobs:
   provision:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    env:
+        ENV: ${{ inputs.env || 'dev' }}
 
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      - name: Check GitHub App secrets
+        env:
+          APP_ID: ${{ secrets.APP_ID_GITHUB }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID_GITHUB }}
+          PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
+        run: |
+          echo "APP_ID length: ${#APP_ID}"
+          echo "CLIENT_ID length: ${#CLIENT_ID}"
+          echo "PRIVATE_KEY length: ${#PRIVATE_KEY}"
+          [[ -n "$APP_ID" ]] || {
+            echo "APP_ID_GITHUB is missing"
+            exit 1
+          }
+          [[ -n "$CLIENT_ID" ]] || {
+            echo "CLIENT_ID_GITHUB is missing"
+            exit 1
+          }
+          [[ -n "$PRIVATE_KEY" ]] || {
+            echo "APP_PRIVATE_KEY_GITHUB is missing"
+            exit 1
+          }
+
       - name: Generate GitHub App token
         id: app-token
-        uses: tibdex/github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
-          app_id: ${{ secrets.APP_ID_GITHUB }}
-          private_key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
+          client-id: ${{ secrets.CLIENT_ID_GITHUB }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_GITHUB }}
 
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          repository: paragon40/kubapp
+          repository: ${{ vars.REPO }}
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Check AWS credentials
-        run: aws sts get-caller-identity
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -81,25 +104,23 @@ jobs:
           set -e
 
           aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
+            --region ${{ vars.AWS_REGION }} \
             --name kubapp-dev
 
           export KUBECONFIG=~/.kube/config
-
           echo "✅ kubeconfig created"
-
           kubectl cluster-info
 
-      - name: Check
+      - name: Check It
         run: |
           set -e
-          echo "=== kubeconfig ==="
-          cat ~/.kube/config || true
+          #echo "=== kubeconfig ==="
+          #cat ~/.kube/config || true
           echo "=== auth test ==="
           kubectl auth can-i get pods -A || true
 
       - name: Check Readiness
-        run: bash scripts/check_cluster.sh
+        run: bash scripts/gitops/check_cluster.sh
 
       - name: Get Current Env
         run: |
@@ -185,9 +206,14 @@ jobs:
           set -euo pipefail
           ENV="${{ env.ENV }}"
           terraform init -reconfigure -backend-config="envs/$ENV/backend.hcl"
-          CERT_ARN=$(terraform output -raw main_cert_arn 2>/dev/null || true)
+          DOMAIN=$(terraform output -raw domain 2>/dev/null || true)
+          CERT_ARN=$(terraform output -raw cert_arn 2>/dev/null || true)
           IRSA_ARN=$(terraform output -raw app_pods_role_arn 2>/dev/null || true)
 
+          if [[ -z "$DOMAIN" ]]; then
+            echo "❌ Domain Not Retrieved from terraform"
+            exit 1
+          fi
           if [[ -z "$CERT_ARN" ]]; then
             echo "❌ Arn Certificate Not Retrieved from terraform"
             exit 1
@@ -196,14 +222,17 @@ jobs:
             echo "❌ Irsa Arn Not Retrieved from terraform"
             exit 1
           fi
+          echo "DOMAIN Found: $DOMAIN"
           echo "CERT Found: $CERT_ARN"
           echo "POD ROLE Found: $IRSA_ARN"
+
+          echo "DOMAIN=$DOMAIN"  >> $GITHUB_ENV
           echo "IRSA_ARN=$IRSA_ARN"  >> $GITHUB_ENV
           echo "CERT_ARN=$CERT_ARN" >> $GITHUB_ENV
 
       - name: Create values + inject vars + ingress registration
         env:
-          DOMAIN: "${{ secrets.DOMAIN }}"
+          DOMAIN: "${{ env.DOMAIN }}"
           CERT_ARN: "${{ env.CERT_ARN }}"
           IRSA_ARN: "${{ env.IRSA_ARN }}"
         run: |
@@ -254,14 +283,14 @@ jobs:
             # Create values.yaml
             ####################################################
               echo "Creating values.yaml..."
-              bash scripts/create_values.sh "$file"
+              bash scripts/gitops/create_values.sh "$file"
 
             ####################################################
             # Inject runtime env + encrypted secrets
             ####################################################
               echo "Preparing runtime env + secrets..."
               if [[ "$NO_SECRETS" == "false" ]]; then
-                bash scripts/create_secrets.sh "$file"
+                bash scripts/gitops/create_secrets.sh "$file"
                 echo "✅ Secrets for $SERVICE Updated!"
               else
                 echo "$SERVICE has No secrets"
@@ -271,7 +300,7 @@ jobs:
             # Register app in shared ingress
             ####################################################
               echo "Registering ingress route for $SERVICE..."
-              bash scripts/register_new_svc.sh "$SERVICE" "$ENV"
+              bash scripts/gitops/register_new_svc.sh "$SERVICE" "$ENV"
             elif [[ "$SERVICE_TYPE" == "Backend" ]]; then
               BACKEND_SERVICE=$(jq -r '.backendService' "$file")
               if [[ -n "$BACKEND_SERVICE" && "$BACKEND_SERVICE" != "null" ]]; then
@@ -290,7 +319,7 @@ jobs:
               fi
 
               echo "Registering ingress route for $SERVICE..."
-              bash scripts/register_new_svc.sh "$SERVICE" "$ENV"
+              bash scripts/gitops/register_new_svc.sh "$SERVICE" "$ENV"
             else
               echo "❌ Incomplete data for $SERVICE, Update gitops/registry/$ENV/${SERVICE}.json"
               exit 1
@@ -302,7 +331,7 @@ jobs:
       - name: Validate GitOps structure
         run: |
           set -euo pipefail
-          bash scripts/validate_gitops.sh
+          bash scripts/gitops/validate_gitops.sh
 
       - name: Commit GitOps changes
         run: |
@@ -310,5 +339,5 @@ jobs:
           ENV="${{ env.ENV }}"
           DIR="gitops"
           MSG="[ADD-NEW-APP] provision new application(s)"
-          bash scripts/commit.sh "$DIR" "$MSG"
+          bash scripts/extra/commit.sh "$DIR" "$MSG"
           echo "✅ New app provisioning committed successfully for $ENV"

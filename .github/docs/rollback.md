@@ -1,140 +1,349 @@
-# Rollback
+# Stable Deployment and Rollback
 
-KubApp supports controlled rollback to a previously verified stable deployment.
+This section manages stable deployment records and provides the mechanism for restoring GitOps state to a previously promoted stable commit.
 
-Rollback is based on Git history, stable deployment tags, and deployment snapshots generated during runtime verification.
+The rollback system is based on the **Git commit as the deployment unit**.
+
+```text
+Create Stable Deployment
+          │
+          ▼
+   stable tag + state
+          │
+          ▼
+Get Latest Stable Deployment
+          │
+          ▼
+       Rollback
+          │
+          ├── target
+          │
+          └── full
+```
 
 ## Workflows
 
-- `get_stable_deploy.yml` — identifies and retrieves a stable deployment.
-- `rollback.yml` — applies the rollback.
+```text
+.github/workflows/
+├── create_stable_deploy.yml
+├── get_stable_deploy.yml
+└── rollback.yml
+```
 
-## Rollback Flow
+---
 
-    Verified Deployment
-            |
-            v
-    Deployment Snapshot
-            |
-            v
-        Stable Tag
-            |
-            v
-    get_stable_deploy.yml
-            |
-            v
-    Identify Stable Commit
-            |
-            v
+# 1. Promote a Commit as Stable
+
+### `create_stable_deploy.yml`
+
+This workflow manually promotes an existing commit as the stable deployment for an environment.
+
+### Inputs
+
+```text
+commit
+env
+```
+
+`commit` must be a complete 40-character Git SHA.
+
+`env` must be:
+
+```text
+dev
+prod
+```
+
+### Process
+
+The workflow:
+
+1. Checks out the repository with full history and tags.
+2. Validates that the supplied commit is a full SHA.
+3. Fetches and verifies that the commit exists.
+4. Validates the selected environment.
+5. Displays the selected commit.
+6. Creates a stable Git tag.
+7. Pushes the tag.
+8. Creates a stable deployment state file.
+9. Commits that state file to the repository.
+
+### Stable Tag
+
+The tag format is:
+
+```text
+stable-<env>-<timestamp>-<short-sha>
+```
+
+Example:
+
+```text
+stable-dev-20260916-120530-a1b2c3d
+```
+
+The tag points directly to the promoted commit.
+
+### Stable State
+
+A record is created under:
+
+```text
+gitops/state/
+```
+
+with the format:
+
+```text
+stable-deploy-<env>-<timestamp>.json
+```
+
+The record contains:
+
+```json
+{
+  "env": "dev",
+  "commit": "<commit-sha>",
+  "stable_tag": "<stable-tag>",
+  "timestamp": "<timestamp>"
+}
+```
+
+This creates a historical record of which commit was promoted as stable.
+
+---
+
+# 2. Retrieve the Latest Stable Deployment
+
+### `get_stable_deploy.yml`
+
+This workflow finds the latest stable deployment record for an environment.
+
+### Input
+
+```text
+env
+```
+
+### Process
+
+It searches:
+
+```text
+gitops/state/
+```
+
+for:
+
+```text
+stable-deploy-<env>-*.json
+```
+
+The latest matching file is selected.
+
+The workflow then verifies:
+
+* the file exists
+* the recorded environment matches the requested environment
+* a stable commit exists
+* a stable tag exists
+
+### Outputs
+
+The workflow exposes:
+
+```text
+stable_commit
+stable_tag
+```
+
+These outputs are consumed by the rollback workflow.
+
+---
+
+# 3. Rollback
+
+### `rollback.yml`
+
+The rollback workflow restores the platform to a previously promoted stable deployment.
+
+### Inputs
+
+For reusable workflow execution:
+
+```text
+env
+commit
+tag
+```
+
+For manual execution:
+
+```text
+env
+tag
+mode
+```
+
+Manual rollback modes are:
+
+```text
+target
+full
+```
+
+---
+
+## Stable Deployment Verification
+
+Before changing anything, rollback verifies:
+
+```text
+Stable commit exists
+        │
+        ▼
+Stable tag exists
+        │
+        ▼
+Tag points to supplied commit
+```
+
+If the tag does not point to the supplied commit, rollback stops.
+
+This prevents a mismatched commit/tag pair from being used for rollback.
+
+---
+
+# Target Rollback
+
+`target` is the normal rollback operation.
+
+It restores the complete `gitops/` directory from the stable commit:
+
+```bash
+git restore --source="$COMMIT" -- gitops
+```
+
+The restored state is then committed to `main`:
+
+```text
+Stable commit
+      │
+      ▼
+Restore gitops/
+      │
+      ▼
+Commit rollback
+      │
+      ▼
+Push to main
+```
+
+Only the GitOps state is restored. The existing `main` history is preserved.
+
+If the current GitOps state already matches the stable commit, no new rollback commit is created.
+
+---
+
+# Full Rollback
+
+`full` rollback resets `main` itself to the stable commit:
+
+```text
+main
+ │
+ ▼
+reset --hard <stable-commit>
+ │
+ ▼
+force-with-lease
+ │
+ ▼
+main points to stable commit
+```
+
+This rewrites the `main` branch history.
+
+The workflow explicitly warns:
+
+```text
+WARNING: This rewrites main history
+```
+
+The push uses:
+
+```bash
+git push origin main --force-with-lease
+```
+
+---
+
+# Rollback Flow
+
+The normal automated rollback path is:
+
+```text
+activate_pipeline.yml
+        │
+        ▼
+get_stable_deploy.yml
+        │
+        ├── stable_commit
+        └── stable_tag
+                │
+                ▼
         rollback.yml
-            |
-            +----------------------+
-            |                      |
-            v                      v
-         TARGET                  FULL
-            |                      |
-            v                      v
-    Restore GitOps            Restore Entire
-    State Only                Repository State
-            |                      |
-            +----------+-----------+
-                       |
-                       v
-                  Git Push
-                       |
-                       v
-              Deployment Reconciles
+                │
+                ▼
+        verify commit + tag
+                │
+                ▼
+          target rollback
+                │
+                ▼
+        restore gitops/
+                │
+                ▼
+          commit + push
+```
 
-## Stable Deployment
+---
 
-KubApp identifies stable deployments using environment-specific tags:
+# Stable Deployment Lifecycle
 
-    stable-dev-*
-    stable-prod-*
+```text
+Existing Git Commit
+        │
+        ▼
+Promote as Stable
+        │
+        ├── create stable tag
+        │
+        └── create stable state record
+                │
+                ▼
+        gitops/state/
+                │
+                ▼
+       Retrieve latest stable
+                │
+                ▼
+             Rollback
+                │
+          ┌─────┴─────┐
+          ▼           ▼
+       target        full
+          │           │
+          ▼           ▼
+    restore GitOps   reset main
+```
 
-The latest matching stable tag is selected and resolved to its Git commit.
+## Responsibility
 
-This provides a deterministic reference point for rollback.
+| Workflow                   | Responsibility                                    |
+| -------------------------- | ------------------------------------------------- |
+| `create_stable_deploy.yml` | Promote a known commit as stable                  |
+| `get_stable_deploy.yml`    | Find and return the latest stable deployment      |
+| `rollback.yml`             | Verify and restore the selected stable deployment |
 
-## Retrieve Stable Deployment
-
-`get_stable_deploy.yml` performs the discovery phase.
-
-It:
-
-1. Receives the target environment.
-2. Fetches repository tags.
-3. Finds the latest stable tag for that environment.
-4. Resolves the tag to its Git commit.
-5. Locates the corresponding runtime verification run.
-6. Retrieves the deployment snapshot.
-7. Displays the snapshot for inspection.
-
-This workflow does not modify the repository.
-
-It identifies the known stable state that can be used for rollback.
-
-## Rollback Modes
-
-`rollback.yml` supports two rollback modes.
-
-### Target Rollback
-
-Target rollback restores only the Kubernetes application GitOps state:
-
-    gitops/envs/
-
-The workflow:
-
-1. Fetches repository tags.
-2. Validates the requested tag.
-3. Restores `gitops/envs` from the selected tag.
-4. Creates a rollback commit.
-5. Pushes the commit.
-
-This allows the repository's application deployment state to move back without rewriting the rest of the repository history.
-
-### Full Rollback
-
-Full rollback restores the entire repository to the selected stable commit.
-
-The workflow:
-
-1. Fetches the stable tag.
-2. Checks out `main`.
-3. Resets `main` to the selected commit.
-4. Pushes the rewritten branch using `--force-with-lease`.
-
-This is a much more destructive operation because it changes the branch history.
-
-## Target vs Full Rollback
-
-| Mode | Scope | Git History | Typical Use |
-|---|---|---|---|
-| `target` | `gitops/envs` | Preserved | Application deployment rollback |
-| `full` | Entire repository | Rewritten | Complete repository rollback |
-
-Target rollback should normally be preferred because it limits the rollback to the application deployment state.
-
-## Relationship With Verification
-
-Rollback depends on having a known stable deployment.
-
-    Build
-      |
-      v
-    Deploy
-      |
-      v
-    Verify Runtime
-      |
-      v
-    Deployment Snapshot
-      |
-      v
-    Stable Deployment
-      |
-      v
-    Rollback
-
-This prevents rollback from being based solely on an arbitrary Git commit. The selected version is associated with a deployment that was previously verified.
+The stable deployment is therefore identified by **both a commit and a tag**, while the rollback target is the complete GitOps state represented by that stable commit.

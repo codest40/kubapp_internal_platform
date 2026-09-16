@@ -3,8 +3,9 @@ name: Validate & Reconcile Ingress
 on:
   workflow_run:
     workflows:
-      - "Add New App (GitOps Provisioning)"
+      - "Add New Apps"
       - "Remove Orphan Apps"
+      - "Remove Service From Ingress"
     types: [completed]
 
   push:
@@ -70,7 +71,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          repository: paragon40/kubapp
+          repository: ${{ vars.REPO }}
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
@@ -155,7 +156,7 @@ jobs:
 
           for svc in ${{ steps.diff.outputs.MISSING }}; do
             echo "Registering: $svc"
-            bash scripts/register_new_svc.sh "$svc" "$ENV"
+            bash scripts/cleanups/register_new_svc.sh "$svc" "$ENV"
           done
 
       - name: Handle invalid services
@@ -177,7 +178,7 @@ jobs:
 
             for svc in $INVALID; do
               echo "Removing: $svc"
-              bash scripts/register_new_svc.sh remove "$svc" "$ENV"
+              bash scripts/gitops/register_new_svc.sh remove "$svc" "$ENV"
             done
           else
             echo "❌ Strict mode enabled — failing pipeline"
@@ -199,7 +200,7 @@ jobs:
 
 
       - name: commit Ingress changes
-        run: bash scripts/commit.sh "$DIR" "From Validate_ingress Workflow"
+        run: bash scripts/extra/commit.sh "$DIR" "From Validate_ingress Workflow"
         env:
           DIR: "gitops/ingress"
 

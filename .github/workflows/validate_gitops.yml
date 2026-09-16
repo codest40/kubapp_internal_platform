@@ -1,0 +1,39 @@
+name: Validate Gitops File Structure
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+concurrency:
+  group: using-commit
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    env:
+        ENV: ${{ inputs.env || 'dev' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run == 'workflow_run' }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.REPO }}
+          fetch-depth: 0
+
+      - name: Validate
+        run: bash scripts/gitops/validate_gitops.sh
+
+      - name: Done
+        run: echo "Successful"
