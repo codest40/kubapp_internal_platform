@@ -1,7 +1,5 @@
-########################################
-# OS / Editor / IDE
-########################################
 
+account.name
 sample/*
 
 # Linux
@@ -33,10 +31,7 @@ $RECYCLE.BIN/
 .idea/
 *.iml
 
-########################################
 # Environment / Secrets
-########################################
-
 .env
 .env.*
 !.env.example
@@ -50,9 +45,7 @@ $RECYCLE.BIN/
 vault.yml
 vault.yaml
 
-########################################
 # Logs
-########################################
 
 logs/
 *.log
@@ -60,10 +53,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-########################################
 # Python
-########################################
-
 __pycache__/
 *.py[cod]
 *.pyo
@@ -89,20 +79,14 @@ dist/
 .coverage.*
 htmlcov/
 
-########################################
 # Node.js
-########################################
-
 node_modules/
 npm-cache/
 .yarn/
 .yarn-cache/
 .pnpm-store/
 
-########################################
 # Docker
-########################################
-
 # Docker runtime artifacts
 docker-compose.override.yml
 
@@ -110,9 +94,7 @@ docker-compose.override.yml
 docker-data/
 data/
 
-########################################
 # Terraform
-########################################
 
 # Terraform directories
 .terraform/
@@ -132,10 +114,6 @@ terraform.tfvars.json
 # Crash logs
 crash.log
 
-########################################
-# Ansible
-########################################
-
 # Ansible retry files
 *.retry
 
@@ -143,25 +121,15 @@ crash.log
 inventory/*/group_vars/*/vault.yml
 inventory/*/host_vars/*/vault.yml
 
-########################################
 # Kubernetes / Helm
-########################################
-
 *.kubeconfig
 charts/**/charts/
 charts/**/tmp/
 
-########################################
-# CI / CD
-########################################
-
 # GitHub Actions local artifacts
 .act/
 
-########################################
 # Archives / Binaries
-########################################
-
 *.zip
 *.tar
 *.tar.gz
@@ -169,10 +137,7 @@ charts/**/tmp/
 *.rar
 *.7z
 
-########################################
 # Temporary / Misc
-########################################
-
 tmp/
 temp/
 .cache/
@@ -183,10 +148,7 @@ temp/
 *.bak.*
 *.old
 
-########################################
 # Documentation build artifacts
-########################################
-
 site/
 docs/_build/
 artifacts/
