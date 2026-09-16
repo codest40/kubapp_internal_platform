@@ -362,7 +362,7 @@ manual administration, and automation:
 ```
 
 
-# A Sample of Setup.env
+# A Sample of your local Setup.env
 ```
 AWS_REGION="<aws-region>"
 AWS_PROFILE="<aws-profile>"
