@@ -200,18 +200,7 @@ After `setup.sh` completes, run:
 bash scripts/activate.sh
 ```
 
-`activate.sh` performs the repository activation and pre-push preparation
-required before sending the project to GitHub.
-
-After activation completes successfully, push the repository to GitHub.
-
-The exact push command depends on the repository's configured Git remote.
-
-For example:
-
-```bash
-git push origin main
-```
+`activate.sh` performs the repository validation, activation and push.
 
 The intended sequence is therefore:
 
@@ -222,16 +211,18 @@ The intended sequence is therefore:
 bash scripts/activate.sh
       │
       ▼
-git push
+     push
       │
       ▼
-GitHub
+    GitHub
 ```
 
 ## 7. Start the CI/CD Pipeline
 
 Once the repository has been pushed to GitHub, the GitHub Actions workflows
-provide the CI/CD control plane.
+provide the CI/CD control plane. Most wokflows run with workflow_dispatch
+and manually activated. Core workflows except **terraform.yml** also run 
+with workkflow_call sourced from pipeline entrypoint.
 
 The main pipeline entry point is:
 
@@ -272,6 +263,7 @@ Runtime Verification
 ```
 
 Rollback and cleanup are separate operational paths.
+
 
 ## 8. Successful Setup
 
@@ -368,3 +360,28 @@ manual administration, and automation:
            ▼
     Runtime Verification
 ```
+
+
+# A Sample of Setup.env
+```
+AWS_REGION="<aws-region>"
+AWS_PROFILE="<aws-profile>"
+
+DOMAIN="xxx"
+DOCKER_USER="xxx"
+DOCKER_PASS="xxx"
+
+GITHUB_OWNER="owner-name"
+GITHB_REPO="repo-name"
+APP_PRIVATE_KEY_GITHUB=""
+APP_ID_GITHUB="xxx"
+CLIENT_ID_GITHUB="xxx"
+INSTALLATION_ID="xxx"
+
+AGE_PRIVATE_KEY="AGE-SECRET-KEY-xxx"
+NVD_API_KEY="xxx"
+ARGOCD_AUTH_TOKEN="xxx"
+INFRACOST_API_KEY="xxx"
+SYS_MONITOR_WEBHOOK="xxx"
+```
+
