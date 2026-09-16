@@ -1,4 +1,0 @@
-flask
-prometheus_client
-kubernetes
-boto3

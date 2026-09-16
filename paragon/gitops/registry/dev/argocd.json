@@ -1,9 +1,0 @@
-{
-  "service": "argocd",
-  "type": "Backend",
-  "stack": "argocd",
-  "backendService": "argocd-server",
-  "env": "dev",
-  "port": 8080,
-  "timestamp": "2026-09-16_11-47-48"
-}

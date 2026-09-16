@@ -1,4 +1,0 @@
-namespace: prod
-
-ingress:
-  name: kubapp-prod-alb
