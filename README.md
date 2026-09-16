@@ -2,7 +2,7 @@
 
 ## Project Goals
 Kubapp aims to provide a simplified but production-oriented Kubernetes platform on AWS.
-Each Section of the project has its own readme file, so this is outline.
+Each Section of the project has its own readme file, so this is the outline.
 
 ## The project was built to:
 - Automate Kubernetes infrastructure provisioning and management
@@ -13,6 +13,7 @@ Each Section of the project has its own readme file, so this is outline.
 
 ## The project focuses on:
 - Infrastructure as Code
+- Continuous Integration/Deployment
 - GitOps workflows
 - Observability
 - Secure cross-account access
@@ -25,7 +26,6 @@ Each Section of the project has its own readme file, so this is outline.
 - [Operations](docs/execution_flow.md)
 - [Security](docs/security.md)
 - [Observability](docs/observability.md)
-- [GitOps](docs/gitops.md)
 - [Information](docs/extra_info.md)
 
 
@@ -41,8 +41,6 @@ kubapp/
 │   ├── execution_flow.md            # End-to-end platform execution flow
 │   ├── extra_info.md                # Extended technical notes
 │   ├── structure                    # Repository structure notes
-│   ├── gitops.md                    # GitOps design and ArgoCD behavior
-│   ├── challenges.md                # Engineering tradeoffs and design decisions
 │   ├── architecture.md             # System architecture overview
 │   ├── security.md                 # Security model (IAM, secrets, policies)
 │   ├── observability.md            # Monitoring and SRE design
