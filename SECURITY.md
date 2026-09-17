@@ -1,10 +1,10 @@
 # KUBAPP Security
 
-KUBAPP treats security as an end-to-end property of the application delivery
-and infrastructure lifecycle.
+KUBAPP treats security as an end-to-end property of the application delivery and infrastructure lifecycle, applying a shift-left approach to identify and address security risks as early as possible in the development and delivery process.
 
-Security controls are applied across source control, CI/CD, AWS, Terraform,
-secrets, container images, Kubernetes, GitOps, and production operations.
+Security controls are applied progressively across source control, CI/CD, AWS,
+Terraform, secrets, container images, Kubernetes, GitOps, and production 
+operations, so security is continuously enforced from code and infrastructure changes through to runtime.
 
 The project follows:
 
