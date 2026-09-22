@@ -41,7 +41,6 @@ kubapp/
 ├── docs/                             # Core system documentation
 │   ├── execution_flow.md            # End-to-end platform execution flow
 │   ├── extra_info.md                # Extended technical notes
-│   ├── structure                    # Repository structure notes
 │   ├── architecture.md             # System architecture overview
 │   ├── security.md                 # Security model (IAM, secrets, policies)
 │   ├── observability.md            # Monitoring and SRE design
@@ -80,7 +79,6 @@ kubapp/
 │   ├── create_values.sh            # Helm values generation helper
 │   ├── validate_vars.sh            # Variable validation utility
 │   ├── logger.sh                   # Logging utility
-│   ├── check_data.sh               # Data validation utility
 │   ├── prechecks.sh                # Pre-deployment checks
 │   ├── postchecks.sh               # Post-deployment verification
 │   ├── cluster_steps.sh            # Cluster lifecycle orchestration
@@ -91,7 +89,6 @@ kubapp/
 │   ├── find.sh                     # Repo search helper
 │   ├── R.md                        # Script reference notes
 │   ├── docs/scripts_use.md         # Script usage documentation
-│   └── __pycache__/               # Python cache artifacts (apply_argo_secret.py)
 │
 ├── gitops/                           # GitOps declarative deployment layer (ArgoCD + Helm)
 │   ├── argocd/                      # ArgoCD applications and appsets
@@ -120,7 +117,6 @@ kubapp/
 ├── docker/                           # Application layer (microservices platform)
 │   ├── weather_app/                # FastAPI weather service + SRE instrumentation
 │   ├── admin_app/                  # Node.js admin panel service
-│   ├── metrics_app/                # Metrics collector + worker service
 │   ├── url_shortener/              # Full-stack URL shortener (frontend + backend)
 │   ├── docker-compose.yml          # Local multi-service orchestration
 │   └── README.md                   # Docker environment documentation
