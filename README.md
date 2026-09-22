@@ -7,7 +7,8 @@ For configuring and initializing KubApp, see [SETUP.md](./SETUP.md).
 
 ## The project was built to:
 - Automate Kubernetes infrastructure provisioning and management
-- Simplify cloud-native operations without overengineering the architecture
+- Provide an integrated CI/CD pipeline for validating, packaging, building and deploying applications
+- Simplify application delivery and cloud-native operations without overengineering the architecture
 - Enable reproducible deployments through Infrastructure as Code and GitOps workflows
 - Improve operational visibility with integrated monitoring and observability
 - Provide a maintainable file-based platform that is easy to operate, debug, and extend
