@@ -24,9 +24,8 @@ For configuring and initializing KubApp, see [SETUP.md](./SETUP.md).
 
 ## Extra Documentation
 
-- [Architecture](docs/architecture.md)
 - [Operations](docs/execution_flow.md)
-- [Security](docs/security.md)
+- [Security](./security.md)
 - [Observability](docs/observability.md)
 - [Information](docs/extra_info.md)
 
