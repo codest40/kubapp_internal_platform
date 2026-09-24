@@ -49,7 +49,6 @@ kubapp/
 ├── scripts/                          # Platform automation and operational control layer
 │   ├── functions/                   # Shared shell utilities (logging, validation, checks)
 │   ├── activate.sh                 # Full platform bootstrap entrypoint
-│   ├── run_tf.sh                   # Terraform execution wrapper
 │   ├── bootstrap_gitops.sh         # GitOps initialization (ArgoCD + repo wiring)
 │   ├── setup_argocd.sh             # ArgoCD installation and setup
 │   ├── validate.sh                 # Pre-deployment validation pipeline
@@ -87,8 +86,7 @@ kubapp/
 │   ├── check_cluster.sh            # Cluster health validation
 │   ├── get_cert.sh                 # Certificate retrieval utility
 │   ├── find.sh                     # Repo search helper
-│   ├── R.md                        # Script reference notes
-│   ├── docs/scripts_use.md         # Script usage documentation
+│   ├── docs/                       # Script usage documentation
 │
 ├── gitops/                           # GitOps declarative deployment layer (ArgoCD + Helm)
 │   ├── argocd/                      # ArgoCD applications and appsets
