@@ -80,6 +80,18 @@
         "minValue": 0,
         "maxValue": 1
       }
+    },
+    {
+      "type": "stat",
+      "title": "Kubernetes Nodes",
+      "gridPos": {"x": 0, "y": 10, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "gitops_node_total",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }
+

@@ -30,3 +30,8 @@ gitops_convergence_score = Gauge(
     "gitops_convergence_score",
     "Overall GitOps convergence score"
 )
+
+gitops_node_total = Gauge(
+    "gitops_node_total",
+    "Number of Kubernetes nodes visible to sys_monitor"
+)

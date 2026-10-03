@@ -7,7 +7,8 @@ from metrics import (
     gitops_app_out_of_sync_total,
     gitops_app_degraded_total,
     gitops_drift_ratio,
-    gitops_convergence_score
+    gitops_convergence_score,
+    gitops_node_total
 )
 
 GROUP = "argoproj.io"
@@ -20,9 +21,11 @@ def collect_metrics():
         api = K8sClientFactory.get_clients()
         custom = api["custom"]
 
-        # =========================================================
-        # DEBUG (optional)
-        # =========================================================
+        v1 = api["core"]
+        nodes = v1.list_node()
+        gitops_node_total.set(len(nodes.items))
+
+        # --------------------- DEBUG (optional) ----------------
         if os.getenv("ENABLE_NODE_DEBUG", "false").lower() == "true":
             v1 = api["core"]
             nodes = v1.list_node()
@@ -31,9 +34,7 @@ def collect_metrics():
             for n in nodes.items[:3]:
                 print(f"[DEBUG] Node: {n.metadata.name}")
 
-        # =========================================================
-        # ArgoCD Applications (single API call)
-        # =========================================================
+        # ------ ArgoCD Applications (single API call) ----------
         response = custom.list_cluster_custom_object(
             group=GROUP,
             version=VERSION,
@@ -41,7 +42,6 @@ def collect_metrics():
         )
 
         apps = response.get("items", [])
-
         total = len(apps)
         healthy = 0
         out_of_sync = 0
@@ -49,7 +49,6 @@ def collect_metrics():
 
         for app in apps:
             status = app.get("status", {})
-
             health = status.get("health", {}).get("status", "")
             sync = status.get("sync", {}).get("status", "")
 

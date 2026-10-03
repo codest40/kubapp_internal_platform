@@ -10,18 +10,8 @@ import time
 
 
 class K8sClientFactory:
-    """
-    Production-hardened EKS Kubernetes client factory.
-
-    Improvements:
-    - exponential backoff on failures
-    - RBAC/IAM diagnostics
-    - token caching with TTL
-    - failure state circuit breaker
-    """
 
     _lock = threading.Lock()
-
     _api_client = None
     _custom = None
     _core = None
@@ -35,16 +25,12 @@ class K8sClientFactory:
     _last_failure_time = 0
     _circuit_open_until = 0
 
-    # =========================================================
-    # LOGGING
-    # =========================================================
+    # ----------------- LOGGING --------------------------
     @classmethod
     def _log(cls, msg):
         print(f"[GitOps DEBUG] {msg}")
 
-    # =========================================================
-    # ENV
-    # =========================================================
+    # ----------------- ENV -----------------------------
     @classmethod
     def _env(cls):
         return {
@@ -55,9 +41,7 @@ class K8sClientFactory:
             "debug": os.getenv("ENABLE_NODE_DEBUG", "false").lower()
         }
 
-    # =========================================================
-    # CIRCUIT BREAKER (ANTI 403 LOOP)
-    # =========================================================
+    # ------------------ CIRCUIT BREAKER -----------------
     @classmethod
     def _is_circuit_open(cls):
         return time.time() < cls._circuit_open_until
@@ -69,7 +53,6 @@ class K8sClientFactory:
 
         # exponential backoff: 10s → 30s → 60s → 120s (cap 5 min)
         delay = min(300, 10 * (2 ** (cls._failure_count - 1)))
-
         cls._circuit_open_until = time.time() + delay
 
         cls._log(f"[FAILURE] {reason}")
@@ -80,9 +63,7 @@ class K8sClientFactory:
         cls._failure_count = 0
         cls._circuit_open_until = 0
 
-    # =========================================================
-    # AWS SESSION
-    # =========================================================
+    # --------------------- AWS SESSION ----------------------
     @classmethod
     def _session(cls):
         env = cls._env()
@@ -120,16 +101,13 @@ class K8sClientFactory:
 
         return session
 
-    # =========================================================
-    # CLUSTER INFO
-    # =========================================================
+    # -------------------------- CLUSTER INFO ----------------
     @classmethod
     def _cluster(cls, session):
         env = cls._env()
 
         eks = session.client("eks", region_name=env["region"])
         c = eks.describe_cluster(name=env["cluster_name"])["cluster"]
-
         cls._log(f"EKS endpoint: {c['endpoint']}")
 
         return {
@@ -137,9 +115,7 @@ class K8sClientFactory:
             "ca": c["certificateAuthority"]["data"]
         }
 
-    # =========================================================
-    # TOKEN CACHE (15 min safe TTL)
-    # =========================================================
+    # -------------- TOKEN CACHE (15 min safe TTL) -------
     @classmethod
     def _token(cls):
         env = cls._env()
@@ -169,9 +145,7 @@ class K8sClientFactory:
 
         return token
 
-    # =========================================================
-    # CLIENT BUILD
-    # =========================================================
+    # ------------------ CLIENT BUILD ------------------------
     @classmethod
     def _build(cls):
         if cls._is_circuit_open():
@@ -206,28 +180,21 @@ class K8sClientFactory:
 
         cls._log("Kubernetes clients initialized")
 
-        # ---------------- RBAC DIAGNOSTIC ----------------
+    @classmethod
+    def _list_nodes(cls):
         try:
             nodes = cls._core.list_node()
-            cls._log(f"RBAC OK → nodes={len(nodes.items)}")
+            count = len(nodes.items)
+            cls._log(f"RBAC OK → nodes={count}")
             cls._reset_failures()
+            return count
 
         except Exception as e:
             cls._log(f"[RBAC FAILURE] {e}")
-
-            # identity diagnostics (VERY IMPORTANT)
-            try:
-                identity = session.client("sts").get_caller_identity()
-                cls._log(f"AWS identity at failure: {identity['Arn']}")
-            except:
-                pass
-
             cls._register_failure(str(e))
             raise
 
-    # =========================================================
-    # PUBLIC
-    # =========================================================
+    # ------------------------ Job To Do  ---------------------
     @classmethod
     def get_clients(cls):
         if cls._api_client:
