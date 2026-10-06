@@ -18,7 +18,7 @@
 - Continuous Integration/Deployment
 - GitOps workflows
 - Observability
-- Secure cross-account access
+- Secure cloud cross-account access
 - Automated provisioning
 - Operational simplicity
 
