@@ -1,14 +1,27 @@
 creation_rules:
 
   # GitOps Kubernetes secrets
-  - path_regex: gitops/secrets/.*\.ya?ml$
+  - path_regex: gitops/secret_mgt/secrets/.*\.ya?ml$
     encrypted_regex: '^(data|stringData)$'
-    age: age1scfdeeyeassgvmey569kn5xwtl47gh3v0gqkuu0ndyhaajdr2a6s6dswul
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
+
+  # GitOps Kubapp Database secret
+  - path_regex: gitops/secret_mgt/db/.*\.ya?ml$
+    encrypted_regex: '^secrets$'
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
 
   # Terraform tfvars files
   - path_regex: iac/.*\.tfvars$
-    age: age1scfdeeyeassgvmey569kn5xwtl47gh3v0gqkuu0ndyhaajdr2a6s6dswul
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
+
+  # Teraform Database secrets
+  - path_regex: iac/database/store/secrets/.*\.env$
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
 
   # Docker app secrets
   - path_regex: docker/.*/.*secret.*\.ya?ml$
-    age: age1scfdeeyeassgvmey569kn5xwtl47gh3v0gqkuu0ndyhaajdr2a6s6dswul
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg
+
+  # Test
+  - path_regex: test/.*\.ya?ml$
+    age: age19u9pmsn4845rghpmrmfh4vnvgm7jwad2njacfq5td9nnu7jawfvqr88alg

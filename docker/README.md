@@ -65,7 +65,7 @@ incomplete_app
   ✗ ci.yml
   → OVERLOOKED
 
-regular_directory
+regular-directory
   ✗ *_app
   ✓ Dockerfile
   ✓ ci.yml
@@ -148,5 +148,5 @@ KUBAPP does not impose a specific application runtime or framework.
 ```
 
 The application provides the required contract; KUBAPP handles discovery,
-validation, packaging, and deployment through the platform workflow.
+validation, packaging, building, management configurations and deployment through the platform workflow.
 
