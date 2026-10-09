@@ -1,44 +1,54 @@
 # KUBAPP — Execution Flow
 
 ```mermaid
-flowchart LR
-    subgraph DEV["CONTINUOUS DELIVERY"]
-        direction TB
-        A(["Code & Configuration"]) --> B["Continuous Integration"]
-        B --> C["Build & Validate"]
-        C --> D["Terraform<br/>Infrastructure Provisioning"]
-        D --> E["Kubernetes<br/>Platform Bootstrap"]
-        E --> F["GitOps · ArgoCD"]
-        F --> G["Deploy Workloads"]
-    end
+flowchart TD
+    A(["Git Push"]) --> B["Continuous Integration<br/>Validate · Build · Prepare Artifacts"]
 
-    subgraph OPS["CONTINUOUS OPERATIONS"]
-        direction TB
-        H["Runtime Verification"]
-        I["Observability<br/>Metrics · Logs · Events"]
-        J["AI-Assisted Analysis"]
-        K["Detection & Alerting"]
-        L["Investigation &<br/>Recommended Actions"]
-    end
+    B --> C["Terraform<br/>Provision AWS Infrastructure"]
 
-    G --> H
-    H --> I
-    I --> J
-    J --> K
+    C --> C1["AWS Foundation<br/>VPC and Networking<br/>EKS · IAM and OIDC<br/>AWS Integrations · Remote State"]
+
+    C1 --> D["Kubernetes Platform Bootstrap"]
+
+    D --> D1["Platform Components<br/>ArgoCD · Ingress and Load Balancing<br/>External DNS · Storage Integrations<br/>Observability · Kubernetes Configuration"]
+
+    D1 --> E["GitOps Configuration in Git"]
+
+    E --> F["ArgoCD<br/>Watch Git · Compare Desired and Live State<br/>Reconcile Differences"]
+
+    F --> G["Kubernetes Workloads<br/>Application Deployment and Runtime"]
+
+    G --> H["Runtime Verification<br/>Workload Health · ArgoCD Sync and Health<br/>Service Availability · Ingress Routing<br/>Application Readiness"]
+
+    H --> I{"System Healthy?"}
+
+    I -- Yes --> J["Continue Monitoring"]
+    I -- No --> K["Detect and Investigate Failure"]
+
+    J --> L["Observability"]
     K --> L
 
-    J --- J1["Failure Analysis<br/>Anomaly Detection<br/>Signal Correlation"]
-    K --- K1["Operational Alerts<br/>Detected Failures<br/>Abnormal Behavior"]
+    L --> L1["Operational Signals<br/>Metrics · Logs · Kubernetes Resources<br/>Workload Health · Infrastructure Behavior<br/>Deployment State"]
 
-    L -. "Reviewed corrective actions" .-> A
+    L1 --> N["AI-Assisted Analysis<br/>Failure Analysis · Anomaly Detection<br/>Signal Correlation · Root Cause Insights"]
 
-    classDef delivery fill:#e8f1ff,stroke:#4776b9,color:#172b4d
-    classDef operations fill:#e5f5eb,stroke:#39845a,color:#153d27
+    N --> O["Detection & Alerting<br/>Identify Abnormal Behavior<br/>Generate Operational Alerts"]
+
+    O --> M["Operational Feedback<br/>Investigation · Recommended Actions"]
+
+    M -. "Continuous Monitoring" .-> H
+
+    classDef source fill:#e8f1ff,stroke:#4776b9,color:#172b4d
+    classDef process fill:#f4f4f5,stroke:#71717a,color:#27272a
+    classDef decision fill:#fff4d6,stroke:#c28b20,color:#49340a
+    classDef observe fill:#e5f5eb,stroke:#39845a,color:#153d27
     classDef ai fill:#f1e8ff,stroke:#8660b5,color:#34204d
     classDef alert fill:#fff0e5,stroke:#c27839,color:#542b12
 
-    class A,B,C,D,E,F,G delivery
-    class H,I,L operations
-    class J,J1 ai
-    class K,K1 alert
+    class A source
+    class B,C,C1,D,D1,E,F,G,H,K process
+    class I decision
+    class J,L,L1,M observe
+    class N ai
+    class O alert
 ```
