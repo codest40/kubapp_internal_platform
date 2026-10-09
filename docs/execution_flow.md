@@ -27,10 +27,10 @@ flowchart LR
     J --> K
     K --> L
 
-    L -. "Human-approved fixes<br/>or reviewed automation" .-> A
+    J --- J1["Failure Analysis<br/>Anomaly Detection<br/>Signal Correlation"]
+    K --- K1["Operational Alerts<br/>Detected Failures<br/>Abnormal Behavior"]
 
-    J --- J1["Failure Analysis<br/>Anomaly Detection<br/>Correlation & Diagnosis"]
-    K --- K1["Alerts for abnormal<br/>behavior and failures"]
+    L -. "Reviewed corrective actions" .-> A
 
     classDef delivery fill:#e8f1ff,stroke:#4776b9,color:#172b4d
     classDef operations fill:#e5f5eb,stroke:#39845a,color:#153d27
@@ -41,37 +41,4 @@ flowchart LR
     class H,I,L operations
     class J,J1 ai
     class K,K1 alert
-```
-
-## Operational Feedback Cycle
-
-```mermaid
-flowchart TD
-    A["Running Kubernetes Workloads"]
-    B["Metrics · Logs · Events"]
-    C["AI Analysis"]
-    D{"Anomaly or Failure Detected?"}
-    E["Continue Monitoring"]
-    F["Generate Alert"]
-    G["Analyze Evidence & Identify Likely Cause"]
-    H["Recommend Corrective Action"]
-    I["Human Review or Approved Automation"]
-    J["Apply Fix"]
-    K["Verify Recovery"]
-
-    A --> B --> C --> D
-    D -- No --> E
-    E --> B
-    D -- Yes --> F --> G --> H --> I --> J --> K
-    K --> A
-
-    classDef runtime fill:#e8f1ff,stroke:#4776b9,color:#172b4d
-    classDef intelligence fill:#f1e8ff,stroke:#8660b5,color:#34204d
-    classDef decision fill:#fff4d6,stroke:#c28b20,color:#49340a
-    classDef response fill:#e5f5eb,stroke:#39845a,color:#153d27
-
-    class A,B,E runtime
-    class C,G,H intelligence
-    class D decision
-    class F,I,J,K response
 ```
