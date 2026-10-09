@@ -25,6 +25,7 @@
 ## Extra Documentation
 
 - [Information](docs/outline.md)
+- [Structure](docs/repo_structure.md)
 - [Operations](docs/execution_flow.md)
 - [GitOps](docs/gitops.md)
 - [Observability](docs/observability.md)
