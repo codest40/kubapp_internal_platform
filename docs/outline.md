@@ -1,6 +1,4 @@
-# KubApp — Execution Flow
-
-KubApp is a Kubernetes-based platform that provisions infrastructure, manages application deployments through GitOps, and continuously verifies the state of the running platform.
+# KubApp — Execution Outline
 
 ## 1. Infrastructure Provisioning
 
@@ -13,6 +11,7 @@ This includes:
 * IAM roles and OIDC
 * Required AWS integrations
 * Terraform remote state
+* Database
 
 The result is a ready Kubernetes environment.
 
@@ -65,7 +64,7 @@ Verification includes:
 * ingress routing
 * application readiness
 
-The goal is to confirm that the desired state has actually become a healthy running system.
+The goal is to confirm that the desired state has actually become a healthy continous running system.
 
 ---
 
