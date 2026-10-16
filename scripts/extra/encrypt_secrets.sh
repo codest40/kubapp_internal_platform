@@ -10,13 +10,12 @@ if [[ -z "$ROOT" ]]; then
 fi
 
 source "$ROOT/reuse.sh"
+source "$SCRIPT_DIR/secret_functions.sh"
+source "$SCRIPT_DIR/tf_secret_functions.sh"
 
 STACKS=("infra" "k8s" "manifests")
 ENV="${1:-dev}"
 
-# =========================
-# LOAD SOPS SETUP
-# =========================
 load_sops_setup() {
     echo "--------------------------------------------------"
     echo "[INFO] LOADING SOPS SETUP"
@@ -39,9 +38,6 @@ load_sops_setup() {
     echo
 }
 
-# =========================
-# PREREQUISITES
-# =========================
 check_prerequisites() {
     echo "--------------------------------------------------"
     echo "[INFO] CHECKING PREREQUISITES"
@@ -58,13 +54,19 @@ check_prerequisites() {
         exit 1
     fi
 
+    if ! command -v dotenv >/dev/null 2>&1; then
+        echo "[ERROR] ❌ Required command 'dotenv' was not found."
+        echo "[ERROR] Database secret reconciliation requires python-dotenv."
+        echo "[ERROR] Check your Python environment and activate it if needed."
+        echo "[ERROR] Example:"
+        echo "        source <your-venv>/bin/activate"
+        echo
+        exit 1
+    fi
     echo "[INFO] Using AGE key: $AGE_PUBLIC_KEY"
     echo
 }
 
-# =========================
-# ENVIRONMENT
-# =========================
 get_envs() {
     case "$ENV" in
         dev)
@@ -83,131 +85,81 @@ get_envs() {
     esac
 }
 
-# =========================
-# SHARED SECRET HELPERS
-# =========================
-is_encrypted() {
-    grep -q '^sops:' "$1"
-}
-
-backup_file() {
-    local file="$1"
-    local backup="${file}.bak"
-
-    cp -f "$file" "$backup"
-
-    echo "[INFO] Backup created: $backup"
-}
-
-decrypt_file() {
-    local file="$1"
-
-    echo "[INFO] Decrypting: $file"
-
-    sops -d -i "$file"
-}
-
-process_secret_file() {
-    local file="$1"
-    local backup="${file}.bak"
-
-    echo "[INFO] Processing: $file"
-
-    # NOT ENCRYPTED
-    if ! is_encrypted "$file"; then
-        echo "[INFO] Plain file detected"
-
-        backup_file "$file"
-        sops -e -i "$file"
-
-        echo "[INFO] Encrypted: $file"
-        return
-    fi
-
-    # ENCRYPTED BUT NO BACKUP
-    if [[ ! -f "$backup" ]]; then
-        echo "[WARN] Encrypted but missing backup"
-
-        decrypt_file "$file"
-        backup_file "$file"
-        sops -e -i "$file"
-
-        echo "[INFO] Re-encrypted after recovery: $file"
-        return
-    fi
-
-    # SAFE STATE
-    echo "[INFO] Already safe (encrypted + backup exists)"
-}
-
-# =========================
-# TERRAFORM SECRETS
-# =========================
-encrypt_tfvars() {
-    echo "--------------------------------------------------"
-    echo "[INFO] TERRAFORM SECRETS ENCRYPTION"
-    echo "--------------------------------------------------"
-
-    for env in $(get_envs); do
-        echo "[INFO] ENV: $env"
-
-        for stack in "${STACKS[@]}"; do
-            local dir="$ROOT/iac/$stack/envs/$env"
-
-            if [[ -d "$dir" ]]; then
-                echo "[INFO] Directory found: $dir"
-            else
-                echo "[WARN] ⚠️ Directory not found: $dir"
-                continue
-            fi
-
-            echo "[INFO] Processing stack: $stack"
-
-            for tfvars in "$dir"/*.tfvars; do
-                [[ -f "$tfvars" ]] || continue
-
-                local out="${tfvars}.enc"
-
-                echo "[INFO] Encrypting: $tfvars -> $out"
-
-                sops --encrypt \
-                    --age "$AGE_PUBLIC_KEY" \
-                    "$tfvars" > "$out"
-            done
-        done
-
-        echo
-    done
-}
-
-# =========================
-# GITOPS SECRETS
-# =========================
 encrypt_gitops_secrets() {
     echo "--------------------------------------------------"
     echo "[INFO] GITOPS SECRETS ENCRYPTION"
     echo "--------------------------------------------------"
 
-    local dir="$ROOT/gitops/secrets"
+    local base_dir="$ROOT/gitops/secret_mgt"
+    local secrets_dir="$base_dir/secrets"
+    local db_dir="$base_dir/db"
 
-    echo "[INFO] Target directory: $dir"
+    echo "[INFO] Base directory: $base_dir"
 
-    [[ -d "$dir" ]] || {
-        echo "[ERROR] ❌ Directory not found: $dir"
+    [[ -d "$base_dir" ]] || {
+        echo "[ERROR] ❌ Directory not found: $base_dir"
         exit 1
     }
 
-    shopt -s nullglob
+    shopt -s nullglob globstar
 
-    for file in "$dir"/**/*.yaml "$dir"/**/*.yml; do
-        [[ -f "$file" ]] || continue
-        process_secret_file "$file"
-    done
+    # =====================================================
+    # gitops/secret_mgt/secrets/**
+    # =====================================================
+
+    if [[ -d "$secrets_dir" ]]; then
+        echo "[INFO] Processing secrets directory: $secrets_dir"
+
+        # Existing secrets
+        for file in "$secrets_dir"/**/*.yaml "$secrets_dir"/**/*.yml; do
+            [[ -f "$file" ]] || continue
+
+            process_secret_file "$file"
+        done
+
+        # Recover deleted secrets from .bak
+        for backup in "$secrets_dir"/**/*.yaml.bak "$secrets_dir"/**/*.yml.bak; do
+            [[ -f "$backup" ]] || continue
+
+            file="${backup%.bak}"
+
+            if [[ ! -f "$file" ]]; then
+                process_secret_file "$file"
+            fi
+        done
+    else
+        echo "[WARN] ⚠️ Directory not found: $secrets_dir"
+    fi
+
+    # =====================================================
+    # gitops/secret_mgt/db/*.yml|*.yaml
+    # =====================================================
+
+    if [[ -d "$db_dir" ]]; then
+        echo "[INFO] Processing database secrets: $db_dir"
+
+        # Existing database secrets
+        for file in "$db_dir"/*.yaml "$db_dir"/*.yml; do
+            [[ -f "$file" ]] || continue
+
+            process_secret_file "$file"
+        done
+
+        # Recover deleted database secrets from .bak
+        for backup in "$db_dir"/*.yaml.bak "$db_dir"/*.yml.bak; do
+            [[ -f "$backup" ]] || continue
+
+            file="${backup%.bak}"
+
+            if [[ ! -f "$file" ]]; then
+                process_secret_file "$file"
+            fi
+        done
+    else
+        echo "[WARN] ⚠️ Directory not found: $db_dir"
+    fi
 }
 
-# =========================
-# DOCKER SECRETS
-# =========================
 encrypt_docker_secrets() {
     echo "--------------------------------------------------"
     echo "[INFO] DOCKER SECRETS ENCRYPTION"
@@ -224,6 +176,7 @@ encrypt_docker_secrets() {
 
     while IFS= read -r -d '' file; do
         [[ -f "$file" ]] || continue
+
         process_secret_file "$file"
     done < <(
         find "$dir" -type f \( \
@@ -235,9 +188,14 @@ encrypt_docker_secrets() {
     )
 }
 
-# =========================
-# DATABASE SECRETS
-# =========================
+process_database_env_secret() {
+    local file="$1"
+
+    echo "[INFO] Processing database secret: $file"
+
+    process_secret_file "$file"
+}
+
 encrypt_database_secrets() {
     echo "--------------------------------------------------"
     echo "[INFO] DATABASE SECRETS ENCRYPTION"
@@ -252,9 +210,12 @@ encrypt_database_secrets() {
         return 0
     fi
 
-    for file in "$dir"/*; do
+    shopt -s nullglob
+
+    for file in "$dir"/*.env; do
         [[ -f "$file" ]] || continue
-        process_secret_file "$file"
+
+        process_database_env_secret "$file"
     done
 }
 
@@ -269,7 +230,7 @@ echo
 load_sops_setup
 check_prerequisites
 
-encrypt_tfvars
+encrypt_tf_secrets "$ENV"
 encrypt_gitops_secrets
 encrypt_docker_secrets
 encrypt_database_secrets

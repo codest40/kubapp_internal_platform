@@ -1,13 +1,11 @@
 import os
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import reuse
 
 
 ENV = os.getenv("ENV")
 REGISTRY = os.getenv("REGISTRY")
-
 MAX_WORKERS = 4
 
 
@@ -34,6 +32,7 @@ APP_REQUIRED = {
     "mount_path": str,
     "NO_VARS": bool,
     "NO_SECRETS": bool,
+    "secret_file": str,
     "CREATED_AT": str,
 }
 
@@ -62,7 +61,7 @@ def validate_environment():
 
 
 def get_registry_dir():
-    root = reuse.get_root()
+    root = reuse.get_root("path")
 
     if not root:
         raise RuntimeError(
@@ -76,7 +75,7 @@ def get_registry_dir():
             f"Registry directory not found: {registry_dir}"
         )
 
-    return registry_dir
+    return root, registry_dir
 
 
 def load_registry(file_path):
@@ -127,11 +126,58 @@ def validate_common(file_path, data):
         )
 
 
-def validate_app(file_path, data):
+def validate_app_secrets(file_path, data, root):
+    secret_file = data["secret_file"]
+    no_secrets = data["NO_SECRETS"]
+
+    if not secret_file:
+        if not no_secrets:
+            raise ValueError(
+                f"{file_path.name}: NO_SECRETS=false "
+                "but secret_file is empty"
+            )
+        return
+
+    if no_secrets:
+        raise ValueError(
+            f"{file_path.name}: NO_SECRETS=true "
+            "but secret_file is not empty"
+        )
+
+    secret_path = root / secret_file
+    if secret_path.is_absolute() and secret_path != root:
+        pass
+
+    if (root / secret_file) != secret_path:
+        raise ValueError(
+            f"{file_path.name}: invalid secret_file path"
+        )
+
+    secret_path = secret_path.resolve()
+    if not secret_path.is_relative_to(root.resolve()):
+        raise ValueError(
+            f"{file_path.name}: secret_file escapes "
+            f"the repository root: {secret_file}"
+        )
+
+    if not secret_path.is_file():
+        raise ValueError(
+            f"{file_path.name}: secret_file does not exist: "
+            f"{secret_file}"
+        )
+
+
+def validate_app(file_path, data, root):
     validate_fields(
         file_path,
         data,
         APP_REQUIRED,
+    )
+
+    validate_app_secrets(
+        file_path,
+        data,
+        root,
     )
 
     validate_common(
@@ -139,7 +185,8 @@ def validate_app(file_path, data):
         data,
     )
 
-    if data["type"] != "App":
+    service_type = data["type"].lower().strip()
+    if service_type != "app":
         raise ValueError(
             f"{file_path.name}: invalid App type"
         )
@@ -201,19 +248,17 @@ def validate_service(file_path, data):
         )
 
 
-def validate_registry_file(file_path):
-    print(
-        f"[VALIDATE] {file_path.name}"
-    )
+def validate_registry_file(file_path, root):
+    print(f"[VALIDATE] {file_path.name}")
 
     data = load_registry(file_path)
-
     registry_type = data.get("type")
 
     if registry_type == "App":
         validate_app(
             file_path,
             data,
+            root,
         )
     elif registry_type == "Backend":
         validate_service(
@@ -226,17 +271,13 @@ def validate_registry_file(file_path):
             f"'{registry_type}'"
         )
 
-    print(
-        f"✅ {file_path.name}: valid"
-    )
+    print(f"✅ {file_path.name}: valid")
 
     return file_path
 
 
-def validate_registry(registry_dir):
-    files = sorted(
-        registry_dir.glob("*.json")
-    )
+def validate_registry(registry_dir, root):
+    files = sorted(registry_dir.glob("*.json"))
 
     if not files:
         raise RuntimeError(
@@ -254,18 +295,14 @@ def validate_registry(registry_dir):
     futures = {}
 
     with ThreadPoolExecutor(
-        max_workers=min(
-            MAX_WORKERS,
-            len(files),
-        )
+        max_workers=min(MAX_WORKERS, len(files))
     ) as executor:
-
         for file_path in files:
             future = executor.submit(
                 validate_registry_file,
                 file_path,
+                root,
             )
-
             futures[future] = file_path
 
         success = True
@@ -277,9 +314,7 @@ def validate_registry(registry_dir):
                 future.result()
             except Exception as exc:
                 success = False
-                print(
-                    f"❌ {file_path.name}: {exc}"
-                )
+                print(f"❌ {file_path.name}: {exc}")
 
     print(line())
 
@@ -292,17 +327,15 @@ def validate_registry(registry_dir):
         f"Platform registry validation passed: "
         f"{len(files)} file(s)"
     )
-
     print(line())
 
 
 def main():
     validate_environment()
-
-    registry_dir = get_registry_dir()
-
+    root, registry_dir = get_registry_dir()
     validate_registry(
-        registry_dir
+        registry_dir,
+        root,
     )
 
 

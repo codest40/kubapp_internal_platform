@@ -53,7 +53,7 @@ def validate_environment():
 
 
 def get_registry_dir():
-    root = reuse.get_root()
+    root = reuse.get_root("path")
 
     if not root:
         raise RuntimeError(

@@ -14,7 +14,7 @@ if res.returncode != 0:
 else:
     ROOT = Path(res.stdout.strip())
 
-SECRETS_DIR = ROOT / "gitops" / "secrets"
+SECRETS_DIR = ROOT / "gitops" / "secret_mgt" / "secrets"
 
 
 def apply_secret(secret_file):

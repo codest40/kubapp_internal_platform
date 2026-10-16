@@ -68,8 +68,9 @@ MNT_VOL=$(jq -r '.mount_vol // ""' "$ARTIFACT_FILE")
 MNT_PATH=$(jq -r '.mount_path // ""' "$ARTIFACT_FILE")
 TMP_ENABLED=$(jq -r '.tmp_enabled // false' "$ARTIFACT_FILE")
 SVC_MONITOR_ENAB=$(jq -r '.svc_monitor_enabled // false' "$ARTIFACT_FILE")
-NO_SECRETS=$(jq -r '.NO_SECRETS // false' "$ARTIFACT_FILE")
+NO_SECRETS=$(jq -r '.NO_SECRETS' "$ARTIFACT_FILE")
 SECRET_NAME="${SERVICE}-secrets"
+DB_ACCESS=$(jq -r '.dbAccess // "false"' "$ARTIFACT_FILE")
 COMPUTE_TYPE=$(jq -r '.computeType // "fargate"' "$ARTIFACT_FILE")
 
 TARGET_SERVICE=$(normalize_name "$SERVICE")
@@ -188,6 +189,8 @@ fi
 ####################################################
 # SECRETS
 ####################################################
+[[ "$NO_SECRETS" == "null" || -z "$NO_SECRETS" ]] && NO_SECRETS="true"
+
 if [[ "$NO_SECRETS" == "false" && -n "$SECRET_NAME" ]]; then
 cat >> /tmp/static-values.yaml <<EOF
 secret:
@@ -196,6 +199,14 @@ secret:
 EOF
 else
   echo "$SERVICE App has No secret: NO_SECRETS=$NO_SECRETS"
+fi
+
+if [[ "$DB_ACCESS" == "true" ]]; then
+cat >> /tmp/static-values.yaml <<EOF
+db:
+  enabled: true
+  secretName: ${SERVICE}-db-secrets
+EOF
 fi
 
 ####################################################

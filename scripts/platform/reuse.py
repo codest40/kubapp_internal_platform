@@ -16,14 +16,22 @@ def get_timestamp():
     TS = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     return TS
 
-def get_root():
-  b = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-      capture_output=True, text=True)
-  if b.returncode != 0:
-    return False
-  return Path(b.stdout.strip())
+def get_root(arg=None):
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        return False
+    root = result.stdout.strip()
+
+    if arg == "path":
+        return Path(root)
+    return root
 
 def start_timer():
     return time.perf_counter()
 
-print(get_root())
+#print(get_root())

@@ -4,10 +4,11 @@ set -euo pipefail
 # =========================================================
 # CREATE / UPDATE KUBERNETES SECRET FROM SOPS FILE
 # Usage:
-#   create_secret.sh <artifact-json>
+#   create_secrets.sh <artifact-json>
 # =========================================================
 
 ARTIFACT_FILE="${1:-}"
+DB_SECRET_DIR="gitops/secret_mgt/db"
 
 fail() {
   echo "❌ $1"
@@ -24,8 +25,10 @@ require() {
 }
 
 line
-[[ -n "$ARTIFACT_FILE" ]] || fail "Usage: create_secret.sh <artifact-json>"
+
+[[ -n "$ARTIFACT_FILE" ]] || fail "Usage: create_secrets.sh <artifact-json>"
 [[ -f "$ARTIFACT_FILE" ]] || fail "Artifact file not found: $ARTIFACT_FILE"
+
 case "$ARTIFACT_FILE" in
   gitops/*)
     echo "✅ Artifact is within GitOps scope: $ARTIFACT_FILE"
@@ -44,98 +47,140 @@ require kubectl
 # LOAD ARTIFACT METADATA
 # =========================================================
 SERVICE=$(jq -r '.service' "$ARTIFACT_FILE")
-CONTEXT=$(jq -r '.context' "$ARTIFACT_FILE")
+SECRET_FILE=$(jq -r '.secret_file' "$ARTIFACT_FILE")
 NAMESPACE=$(jq -r '.namespace' "$ARTIFACT_FILE")
 NO_SECRETS=$(jq -r '.NO_SECRETS' "$ARTIFACT_FILE")
+DB_ACCESS=$(jq -r '.dbAccess // false' "$ARTIFACT_FILE")
 
-[[ -n "$SERVICE" && "$SERVICE" != "null" ]] || fail "Invalid service in artifact"
-[[ -n "$NAMESPACE" && "$NAMESPACE" != "null" ]] || fail "Invalid namespace in artifact"
+[[ -n "$SERVICE" && "$SERVICE" != "null" ]] \
+  || fail "Invalid service in artifact"
+
+[[ -n "$NAMESPACE" && "$NAMESPACE" != "null" ]] \
+  || fail "Invalid namespace in artifact"
 
 echo "======================================"
 echo " Secret Deployment"
 echo " Service   : $SERVICE"
 echo " Namespace : $NAMESPACE"
+echo " DB Access : $DB_ACCESS"
 echo "======================================"
 
 # =========================================================
-# EXIT IF NO SECRETS
+# RETURN IF NO SECRETS
 # =========================================================
-if [[ -n "$NO_SECRETS" && "$NO_SECRETS" == "true" ]]; then
+if [[ "$NO_SECRETS" == "true" && "$DB_ACCESS" != "true" ]]; then
   echo "No secrets defined for $SERVICE"
   exit 0
-elif [[ -z "$NO_SECRETS" ]]; then
-  echo "❌ Secrets defined BUT Value for $SERVICE is Empty"
-  exit 0
 fi
 
 # =========================================================
-# LOCATE ENCRYPTED SECRET FILE
+# APPLICATION SECRET
 # =========================================================
-SECRET_FILE=""
+if [[ "$NO_SECRETS" == "false" ]]; then
 
-for file in \
-  "$CONTEXT/secrets.yaml" \
-  "$CONTEXT/secrets.yml"  \
-  "$CONTEXT/secret.yaml" \
-  "$CONTEXT/secret.yml"
-do
-  if [[ -f "$file" && -s "$file" ]]; then
-    SECRET_FILE="$file"
-    break
+   [[ -f "$SECRET_FILE" ]] \
+    || fail "NO_SECRETS=false but encrypted secret file not found"
+
+  echo "Using application secret: $SECRET_FILE"
+
+  TMP_DEC=$(mktemp)
+  TMP_SECRET=$(mktemp)
+
+  cleanup() {
+    rm -f "$TMP_DEC" "$TMP_SECRET"
+  }
+
+  trap cleanup EXIT
+
+  sops -d "$SECRET_FILE" > "$TMP_DEC"
+
+  # =======================================================
+  # VALIDATE STRUCTURE
+  # Expected:
+  # secrets:
+  #   KEY: VALUE
+  # =======================================================
+  COUNT=$(yq e '.secrets // {} | length' "$TMP_DEC")
+
+  if [[ "$COUNT" -eq 0 ]]; then
+    echo "No application secret entries found"
+  else
+    echo "Found $COUNT application secret entries"
+
+    SECRET_NAME="${SERVICE}-secrets"
+
+    if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+      echo "Namespace '$NAMESPACE' does not exist. Creating..."
+      kubectl create namespace "$NAMESPACE"
+    fi
+
+    kubectl create secret generic "$SECRET_NAME" \
+      -n "$NAMESPACE" \
+      --from-env-file=<(yq e '.secrets | to_entries | .[] | "\(.key)=\(.value)"' "$TMP_DEC") \
+      --dry-run=client -o yaml > "$TMP_SECRET"
+
+    kubectl apply -f "$TMP_SECRET"
+
+    echo "✅ Application secret applied: $SECRET_NAME"
   fi
-done
 
-[[ -n "$SECRET_FILE" ]] || fail "NO_SECRETS=false but encrypted secret file not found"
-
-echo "Using encrypted file: $SECRET_FILE"
-
-# =========================================================
-# DECRYPT
-# =========================================================
-TMP_DEC=$(mktemp)
-TMP_SECRET=$(mktemp)
-
-cleanup() {
   rm -f "$TMP_DEC" "$TMP_SECRET"
-}
-trap cleanup EXIT
-
-sops -d "$SECRET_FILE" > "$TMP_DEC"
-
-# =========================================================
-# VALIDATE STRUCTURE
-# Expected:
-# secrets:
-#   KEY: VALUE
-# =========================================================
-COUNT=$(yq e '.secrets // {} | length' "$TMP_DEC")
-
-if [[ "$COUNT" -eq 0 ]]; then
-  echo "No secret entries found"
-  exit 0
+  trap - EXIT
 fi
 
-echo "Found $COUNT secret entries"
-
 # =========================================================
-# BUILD SECRET MANIFEST
+# DATABASE SECRET
 # =========================================================
-SECRET_NAME="${SERVICE}-secrets"
+if [[ "$DB_ACCESS" == "true" ]]; then
 
-if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
-  echo "Namespace '$NAMESPACE' does not exist. Creating..."
-  kubectl create namespace "$NAMESPACE"
+  DB_SECRET_FILE="$DB_SECRET_DIR/kubapp-db-secrets.yml"
+  [[ -f "$DB_SECRET_FILE" ]] \
+  || fail "DB access enabled but encrypted DB secret file not found: $DB_SECRET_FILE"
+
+  echo "Using platform DB secret: $DB_SECRET_FILE"
+
+  TMP_DB_DEC=$(mktemp)
+  TMP_DB_SECRET=$(mktemp)
+
+  cleanup_db() {
+    rm -f "$TMP_DB_DEC" "$TMP_DB_SECRET"
+  }
+
+  trap cleanup_db EXIT
+
+  sops -d "$DB_SECRET_FILE" > "$TMP_DB_DEC"
+  DB_STATUS=$(yq e -r '.secrets.DB_STATUS // "inactive"' "$TMP_DB_DEC")
+
+  if [[ "$DB_STATUS" != "active" ]]; then
+    echo "⚠️ Database access requested but database is inactive"
+    exit 10
+  fi
+
+  DB_COUNT=$(yq e '.secrets // {} | length' "$TMP_DB_DEC")
+
+  if [[ "$DB_COUNT" -eq 0 ]]; then
+    fail "DB secret file contains no secret entries"
+  fi
+
+  echo "Found $DB_COUNT database secret entries"
+
+  DB_SECRET_NAME="${SERVICE}-db-secrets"
+
+  if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+    echo "Namespace '$NAMESPACE' does not exist. Creating..."
+    kubectl create namespace "$NAMESPACE"
+  fi
+
+  kubectl create secret generic "$DB_SECRET_NAME" \
+    -n "$NAMESPACE" \
+    --from-env-file=<(yq e '.secrets | to_entries | .[] | "\(.key)=\(.value)"' "$TMP_DB_DEC") \
+    --dry-run=client -o yaml > "$TMP_DB_SECRET"
+
+  kubectl apply -f "$TMP_DB_SECRET"
+
+  echo "✅ Database secret applied: $DB_SECRET_NAME"
+
+  rm -f "$TMP_DB_DEC" "$TMP_DB_SECRET"
+  trap - EXIT
 fi
-
-kubectl create secret generic "$SECRET_NAME" \
-  -n "$NAMESPACE" \
-  --from-env-file=<(yq e '.secrets | to_entries | .[] | "\(.key)=\(.value)"' "$TMP_DEC") \
-  --dry-run=client -o yaml > "$TMP_SECRET"
-
-# =========================================================
-# APPLY SECRET
-# =========================================================
-kubectl apply -f "$TMP_SECRET"
-
-echo "✅ Secret applied: $SECRET_NAME"
 

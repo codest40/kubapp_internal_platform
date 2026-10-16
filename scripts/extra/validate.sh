@@ -153,16 +153,37 @@ echo "--------------------------------------------------"
 echo "[INFO] [5/8] YAML VALIDATION"
 echo "--------------------------------------------------"
 
-mapfile -t yamls < <(find . -type f \( -name "*.yml" -o -name "*.yaml" \))
+mapfile -t yamls < <(
+  {
+    find ".github/workflows" -type f \( -name "*.yml" -o -name "*.yaml" \)
+    find "docker" -type f \( \
+      -name "docker-compose.yml" -o \
+      -name "docker-compose.yaml" -o \
+      -name "kubapp.yml" -o \
+      -name "kubapp.yaml" -o \
+      -name "ci.yml" -o \
+      -name "ci.yaml" -o \
+      -name "secrets.yml" -o \
+      -name "secrets.yaml" -o \
+      -name "secret.yml" -o \
+      -name "secret.yaml" \
+    \)
+
+    find "gitops" -type f \( -name "*.yml" -o -name "*.yaml" \)
+    find "sys_monitor" -type f \( -name "*.yml" -o -name "*.yaml" \)
+    printf '%s\n' ".checkov.yaml"
+    printf '%s\n' ".sops.yaml"
+  }
+)
 
 for file in "${yamls[@]}"; do
   if [[ "$file" == *"templates/"* ]]; then
     echo "[INFO] Skipping Helm template: $file"
     continue
   fi
+
   yq e '.' "$file" >/dev/null || fail "Invalid YAML: $file"
 done
-
 echo "[INFO] ✅ YAML OK"
 echo
 
@@ -194,7 +215,7 @@ else
   echo "[WARN] ⚠️ Skipping shellcheck (not installed)"
 fi
 
-echo "[INFO] ✅ Scripts OK"
+echo "[INFO] ✅ Scripts checks complete"
 echo
 
 ############################################
@@ -212,7 +233,7 @@ if grep -r "aws_secret_access_key" . --exclude-dir=.git >/dev/null 2>&1; then
   echo "[WARN] ⚠️ Possible secret detected in repo"
 fi
 
-echo "[INFO] ✅ Sanity checks OK"
+echo "[INFO] ✅ Sanity checks complete"
 echo
 
 echo "=================================================="

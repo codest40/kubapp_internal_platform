@@ -66,7 +66,7 @@ echo "--------------------------------------------------"
 echo "[INFO] CORE STRUCTURE VALIDATION"
 echo "--------------------------------------------------"
 
-for dir in "${ROOT/DIRS[@]}"; do
+for dir in "${DIRS[@]}"; do
   echo
   echo "[INFO] Checking directory: $dir"
 

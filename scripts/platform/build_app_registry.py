@@ -28,7 +28,7 @@ def require_env():
 
 
 def get_paths():
-    root = reuse.get_root()
+    root = reuse.get_root("path")
     if not root:
         raise RuntimeError("Unable to determine repository root")
 
@@ -68,8 +68,8 @@ def load_ci_data(manifest):
 
     apps = data.get("apps")
 
-    if not isinstance(apps, dict) or not apps:
-        raise ValueError("CI manifest contains no applications")
+    if not isinstance(apps, dict):
+        raise ValueError("CI manifest apps must be an object")
 
     return apps
 
@@ -93,7 +93,6 @@ def validate_ci_app(app_name, app):
         "runtime",
         "extra_ci_data",
         "platform_file",
-        "secret_file",
     ]
 
     for field in required:
@@ -161,7 +160,6 @@ def get_image_data(image):
 
     last_slash = image.rfind("/")
     last_colon = image.rfind(":")
-
     if last_colon <= last_slash:
         raise ValueError(
             f"Invalid tagged image: {image}"
@@ -188,7 +186,6 @@ def get_healthcheck(app):
         raise ValueError(
             "healthcheck must be an object"
         )
-
     return healthcheck
 
 
@@ -272,11 +269,26 @@ def get_no_vars(platform):
     return not bool(variables)
 
 
-def get_no_secrets(app):
-    return app["secret_file"] is None
+def discover_secret_file(app_name, app, root):
+    app_dir = (root / app["path"]).resolve()
 
+    candidates = [
+        app_dir / "platform_secrets.yml",
+        app_dir / "secrets.yml",
+    ]
 
-def construct_registry(app_name, app, platform):
+    for secret_file in candidates:
+        if secret_file.is_file():
+            relative_path = secret_file.relative_to(root)
+            print(
+                f"[{app_name}] Application secrets detected: "
+                f"{relative_path}"
+            )
+            return str(relative_path)
+    print(f"[{app_name}] No application secrets detected")
+    return ""
+
+def construct_registry(app_name, app, platform, secret_file):
     repository, tag = get_image_data(
         app["image"]
     )
@@ -344,6 +356,9 @@ def construct_registry(app_name, app, platform):
             "compute",
             "fargate",
         ),
+        "dbAccess": service.get(
+            "dbAccess", False,
+        ),
         "context": app["path"],
         "image": repository,
         "tag": tag,
@@ -388,9 +403,8 @@ def construct_registry(app_name, app, platform):
         "NO_VARS": get_no_vars(
             platform
         ),
-        "NO_SECRETS": get_no_secrets(
-            app
-        ),
+        "NO_SECRETS": not bool(secret_file),
+        "secret_file": secret_file,
         "CREATED_AT": datetime.now().strftime(
             "%Y-%m-%d_%H-%M-%S"
         ),
@@ -403,6 +417,7 @@ def validate_registry(app_name, registry):
         "service": str,
         "type": str,
         "computeType": str,
+        "dbAccess": bool,
         "context": str,
         "image": str,
         "tag": str,
@@ -422,6 +437,7 @@ def validate_registry(app_name, registry):
         "mount_path": str,
         "NO_VARS": bool,
         "NO_SECRETS": bool,
+        "secret_file": str,
         "CREATED_AT": str,
     }
 
@@ -440,7 +456,9 @@ def validate_registry(app_name, registry):
                 f"must be {expected_type.__name__}"
             )
 
-    if registry["type"] != "App":
+    reg = registry["type"]
+    reg = reg.strip().lower()
+    if reg != "app":
         raise ValueError(
             f"{app_name}: registry type must be App"
         )
@@ -479,6 +497,55 @@ def write_registry(registry_dir, app_name, registry):
 
     return file_path
 
+def reconcile_app_registry(registry_dir, desired_apps):
+    """
+    Only entries with type=App are managed here.
+    """
+
+    if not registry_dir.is_dir():
+        raise FileNotFoundError(
+            f"Registry directory not found: {registry_dir}"
+        )
+
+    desired_apps = set(desired_apps)
+
+    removed = []
+
+    for file_path in registry_dir.glob("*.json"):
+        try:
+            with file_path.open() as file:
+                data = json.load(file)
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(
+                f"Unable to read registry file: {file_path}"
+            ) from exc
+
+        # reconciler only owns App entries.
+        registry_type = str(data.get("type", "")).strip().lower()
+        if registry_type != "app":
+            continue
+
+        service = data.get("service")
+
+        if not service:
+            raise ValueError(
+                f"App registry entry has no service: {file_path}"
+            )
+
+        if service not in desired_apps:
+            file_path.unlink()
+            removed.append(service)
+
+            print(
+                f"Removed stale App registry: "
+                f"{file_path}"
+            )
+
+    print(
+        f"✅ Application registry reconciliation complete: "
+        f"{len(removed)} stale App(s) removed"
+    )
+    return True
 
 def build_one_app(root, registry_dir, app_name, app):
     print(line())
@@ -507,19 +574,21 @@ def build_one_app(root, registry_dir, app_name, app):
             f"[{app_name}] No kubapp.yml - using defaults"
         )
 
-    if app["secret_file"]:
+    secret_file = discover_secret_file(app_name, app, root)
+    if secret_file:
         print(
-            f"[{app_name}] secrets.yml detected"
+            f"[{app_name}] {secret_file} detected"
         )
     else:
         print(
-            f"[{app_name}] No secrets.yml detected"
+            f"[{app_name}] No secret file detected"
         )
 
     registry = construct_registry(
         app_name,
         app,
         platform,
+        secret_file,
     )
 
     validate_registry(
@@ -541,7 +610,7 @@ def build_one_app(root, registry_dir, app_name, app):
         f"[{app_name}] Registry written: {file_path}"
     )
 
-    return app_name, file_path
+    return app_name, registry["service"], file_path
 
 
 def main():
@@ -558,60 +627,73 @@ def main():
     print(line())
 
     apps = load_ci_data(manifest)
-
     registry_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    futures = {}
-
-    with ThreadPoolExecutor(
-        max_workers=min(
-            MAX_WORKERS,
-            len(apps),
-        )
-    ) as executor:
-
-        for app_name, app in apps.items():
-            future = executor.submit(
-                build_one_app,
-                root,
-                registry_dir,
-                app_name,
-                app,
-            )
-
-            futures[future] = app_name
-
+    if not apps:
         success = True
+        print("No applications found in CI manifest")
+    else:
+      futures = {}
+      desired_services = set()
 
-        for future in as_completed(futures):
-            app_name = futures[future]
+      with ThreadPoolExecutor(
+          max_workers=min(
+              MAX_WORKERS,
+              len(apps),
+          )
+      ) as executor:
 
-            try:
-                future.result()
-                print(
-                    f"✅ {app_name}: platform registry completed"
-                )
-            except Exception as exc:
-                success = False
-                print(
-                    f"❌ {app_name}: platform registry failed - {exc}"
-                )
+          for app_name, app in apps.items():
+              future = executor.submit(
+                  build_one_app,
+                  root,
+                  registry_dir,
+                  app_name,
+                  app,
+              )
 
-    print(line())
+              futures[future] = app_name
+
+          success = True
+
+          for future in as_completed(futures):
+              app_name = futures[future]
+
+              try:
+                  app_name, service_name, file_path = future.result()
+                  desired_services.add(service_name)
+                  print(
+                      f"✅ {app_name}: platform registry completed"
+                  )
+              except Exception as exc:
+                  success = False
+                  print(
+                      f"❌ {app_name}: platform registry failed - {exc}"
+                  )
+
+      print(line())
 
     if not success:
-        raise RuntimeError(
-            "One or more application registries failed"
-        )
+        raise RuntimeError("One or more application registries failed")
 
     print(
         f"Application registry build completed: "
         f"{len(apps)} application(s)"
     )
 
+    print(line())
+    success = reconcile_app_registry(
+      registry_dir=registry_dir,
+      desired_apps=desired_services,
+    )
+
+    if not success:
+        print(f"❌ FAILED: Application registry reconcilation. "
+              f"Check {registry_dir}" )
+        raise RuntimeError("Application registry reconciliation failed")
     print(line())
 
 
