@@ -1,302 +1,386 @@
-import reuse
-import os
 import json
+import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from variables import CI_COMMANDS, EXTRA_FILES, MANIFESTS
-from detect_runtime import (
-  detect_valid_apps, detect_app_runtime,
-  get_runtime_handler, get_app_ci_commands,)
-from app_builder import AppBuilder
-from container import ContainerManager
+from datetime import datetime, timezone
+from pathlib import Path
 
-docker_user = os.getenv("DOCKER_USER")
-docker_passwd = os.getenv("DOCKER_PASS")
-ENV = os.getenv("ENV")
-platform_filename = "kubapp.yml"
-platform_secrets_filename = "secrets.yml"
-runtime_list = set(MANIFESTS.values())
-project_root = reuse.get_root()
+import reuse
+from app_validator import ValidateApp
+from container import ContainerManager
+from detect_runtime import get_runtime_handler
+from validate import validate_apps
+from manage_env import prepare_component_environment
+from variables import CI_COMMANDS, EXTRA_MANIFESTS, MANIFESTS
+
+
+DOCKER_USER = os.getenv("DOCKER_USER")
+DOCKER_PASS = os.getenv("DOCKER_PASS")
+ENV = os.getenv("ENV", "dev")
+STRICT_MODE = os.getenv("STRICT_MODE", "true").strip().lower() == "true"
+FAIL_MODE = os.getenv("FAIL_MODE", "true").strip().lower() == "true"
+
+
+PROJECT_ROOT = Path(reuse.get_root())
+RUNTIME_LIST = set(MANIFESTS.values())
 MAX_WORKERS = 4
+
 ALL_APPS = {}
 STORE = {}
 
-def line():
-    return "=" * 60
 
 def is_file_okay(path):
-    return path.is_file() and bool(path.read_text().strip())
-
-def discover_extra_data(component_dir, runtime):
-    extra_data = {}
-    for file, file_runtime in EXTRA_FILES.items():
-        if file_runtime != runtime:
-            continue
-        extra = component_dir / file
-        if is_file_okay(extra):
-            extra_data[file] = extra
-    return extra_data
-
-def discover_extra_args(component_dir, runtime):
-    all_info = get_app_ci_commands(component_dir, runtime)
-    app_commands = all_info.get("ci_commands")
-    extra_data = all_info.get("extra_data")
-    if not app_commands:
-      return CI_COMMANDS.get(runtime, {}), extra_data
-    return app_commands, extra_data
-
-def classify_apps():
-    apps = detect_valid_apps()
-    if not apps:
-        return {}
-
-    apps_dict = {}
-
-    for app_dir in apps:
-        manifests = detect_app_runtime(app_dir)
-
-        if not manifests:
-            print(line())
-            print("ATTENTION NEEDED!")
-            print(
-                f"❌ UNKNOWN app runtime could not be detected. "
-                f"Provide a valid manifest at {app_dir}."
-            )
-            print(line())
-            continue
-
-        components = []
-        for manifest, runtime in manifests.items():
-            component_dir = manifest.parent
-            dockerfile = component_dir / "Dockerfile"
-            platform_file = component_dir / platform_filename
-            secret_file = component_dir / platform_secrets_filename
-
-            if not is_file_okay(manifest):
-                continue
-
-            if not is_file_okay(dockerfile):
-                dockerfile = False
-            if not is_file_okay(platform_file):
-                platform_file = False
-            if not is_file_okay(secret_file):
-                secret_file = False
-
-            ci_cmds, ci_extra = discover_extra_args(component_dir, runtime)
-            extra_data = discover_extra_data(component_dir, runtime)
-
-            components.append({
-                "manifest": manifest,
-                "runtime": runtime,
-                "dockerfile": dockerfile,
-                "platform_file": platform_file,
-                "secret_file": secret_file,
-                "extra_data": extra_data,
-                "ci_commands": ci_cmds,
-                "ci_extra": ci_extra,
-            })
-
-        if not components:
-            print(line())
-            print(
-                f"❌ {app_dir.name}: no valid components found. "
-                f"App manifest MUST be provided."
-            )
-            print(line())
-            continue
-
-        apps_dict[app_dir] = {
-            "app": app_dir.name,
-            "components": components,
-        }
-
-    return apps_dict
-
-def build_app(app_dir, app_data):
-    for component in app_data["components"]:
-        manifest = component["manifest"]
-        runtime = component["runtime"]
-        dockerfile = component["dockerfile"]
-        extra_data = component["extra_data"]
-        ci_commands = component["ci_commands"]
-        extra_ci_data = component["ci_extra"]
-        platform_file = component["platform_file"]
-        secret_file = component["secret_file"]
-
-        app_name = app_data["app"]
-        component_name = manifest.parent.name
-        if app_name != component_name:
-            app_name = f"{component_name}_{app_name}"
-
-        if runtime not in runtime_list:
-            print(
-                f"❌ Unsupported runtime '{runtime}' "
-                f"for {app_name} with {manifest}"
-            )
-            continue
-
-        print(line())
-        length = len(app_data["components"])
-        print(f"[STARTING] {app_name} ({length} component(s))")
-
-        handler_class = get_runtime_handler(runtime)
-        if not handler_class:
-            continue
-        handler = handler_class(
-            app_name=app_name,
-            manifest=manifest,
-            dockerfile=dockerfile,
-            extra_data=extra_data,
-            ci_commands=ci_commands,
-        )
-
-        start = reuse.start_timer()
-
-        handler.install_dependencies()
-        handler.lint()
-        handler.security_analysis()
-        handler.unit_tests()
-        image =  handler.build_from_dockerfile()
-
-        duration = reuse.start_timer() - start
-        print(f"[{app_name}] Build Duration: {duration:.2f}s")
-
-        container = AppBuilder()
-        image = container.tag(image, docker_user)
-        validate = container.validate(
-          app_dir=app_dir, app_name=app_name, image=image,
-          user=docker_user, passwd=docker_passwd,
-        )
-        authenticate = container.authenticate(docker_user, docker_passwd)
-        image = container.push(image)
-
-        container_name = f"{app_name}-test"
-        healthcheck = extra_ci_data.get("healthcheck", {})
-        app_port = healthcheck.get("app_port")
-        host_port = healthcheck.get("host_port")
-        endpoint = healthcheck.get("endpoints")[0]
-        status = healthcheck.get("expected_status", 200)
-
-        duration = reuse.start_timer() - start
-        print(f"[{app_name}] Build + Push Duration: {duration:.2f}s")
-
-        container = ContainerManager()
-        container.start_container(image, container_name, host_port, app_port)
-        try:
-          container.test_container(container_name, host_port, endpoint, status)
-        finally:
-            container.stop_container(container_name)
-            container.remove_container(container_name)
-
-        complete = {
-            "image": image,
-            "path": str(manifest.parent.relative_to(project_root)),
-            "runtime": runtime,
-            "extra_ci_data": extra_ci_data,
-            "platform_file": str(platform_file) if platform_file else None,
-            "secret_file": str(secret_file) if secret_file else None,
-        }
-
-        ALL_APPS[app_name] = complete
-
-    return app_dir, True
-
-def start_app_build():
-    apps = classify_apps()
-
-    print(line())
-    if not apps:
-        print("No valid applications found")
-        print(line())
+    try:
+        path = Path(path)
+        if not path.is_file():
+            return False
+        return bool(path.read_text(encoding="utf-8").strip())
+    except (OSError, UnicodeError):
         return False
 
-    futures = {}
+
+def discover_extra_manifests(manifest_files, runtime):
+    extra_manifests = []
+    for manifest_file in manifest_files:
+        manifest_path = Path(manifest_file)
+        for filename, extra_runtime in EXTRA_MANIFESTS.items():
+            if extra_runtime != runtime:
+                continue
+            if filename != manifest_path.name:
+                continue
+            if is_file_okay(manifest_path):
+                extra_manifests.append(manifest_path)
+            break
+    return extra_manifests
+
+def classify_apps(validated_apps):
+    classified_apps = {}
+
+    if not validated_apps:
+        print("No validated applications were provided for classification.")
+        return classified_apps
+
+    for app in validated_apps:
+        app_name = app["app"]
+        app_dir = Path(app["app_dir"]).resolve()
+        component_dir = Path(
+            app.get("component_dir", app_dir)
+        ).resolve()
+
+        extra_manifests = discover_extra_manifests(
+            app.get("manifest_files", []), app["runtime"],
+        )
+
+        component = {
+            "app": app_name,
+            "app_dir": app_dir,
+            "component_dir": component_dir,
+            "manifest": app["manifest"],
+            "manifest_files": app.get("manifest_files", []),
+            "extra_manifests": extra_manifests,
+            "runtime": app["runtime"],
+            "dockerfile": app["dockerfile"],
+            "platform_file": app.get("platform_file"),
+            "secret_file": app.get("secret_file"),
+            "use_script": app.get("use_script", False),
+            "ci_scripts": app.get("ci_scripts", []),
+            "ci_commands": ( app.get("ci_commands")
+                or CI_COMMANDS.get(app["runtime"], {})),
+            "extra_ci_commands": app.get("extra_ci_commands", {}),
+            "extra_ci_config": app.get("extra_ci_config", {}),
+            "security_env": app.get("security_env", []),
+        }
+
+        classified_apps.setdefault(app_dir, []).append(component)
+    return classified_apps
+
+def build_component(app_dir, component):
+    app_dir = Path(app_dir).resolve()
+    app_name = component["app"]
+    component_dir = Path(component["component_dir"]).resolve()
+
+    try:
+        runtime = component["runtime"]
+        if runtime not in RUNTIME_LIST:
+            raise RuntimeError(
+                f"Unsupported runtime for {app_name}: {runtime}"
+            )
+
+        component_env = prepare_component_environment(
+                app_name=app_name,
+                secret_file=component["secret_file"],
+                security_env=component["security_env"],
+        )
+
+        handler_class = get_runtime_handler(runtime)
+        if handler_class is None:
+            raise RuntimeError(
+                f"No runtime handler found for {runtime}"
+            )
+
+        handler = handler_class(
+            app_name=app_name,
+            component_dir=component_dir,
+            parent_dir=app_dir,
+            runtime=runtime,
+            manifest=component["manifest"],
+            extra_manifests=component["extra_manifests"],
+            dockerfile=component["dockerfile"],
+            ci_commands=component["ci_commands"],
+            extra_ci_commands=component["extra_ci_commands"],
+            extra_ci_config=component["extra_ci_config"],
+            security_env = component["security_env"],
+            env=component_env,
+        )
+
+        print(
+            f"[{app_name}] Starting CI "
+            f"for runtime={runtime}, component={component_dir}"
+        )
+
+        image = handler.run_ci(
+            use_script=component["use_script"],
+            ci_scripts=component["ci_scripts"],
+        )
+
+        if not image:
+            raise RuntimeError(
+                f"CI checks or image build failed for {app_name}"
+            )
+
+        validator = ValidateApp(
+            app_name=app_name,
+            app_dir=component_dir,
+            runtime=runtime,
+            manifest=component["manifest"],
+            dockerfile=component["dockerfile"],
+        )
+
+        image_tag = validator.tag(image, DOCKER_USER)
+        validator.validate_image(image_tag)
+
+        extra_ci_config = component["extra_ci_config"]
+        healthcheck = extra_ci_config["healthcheck"]
+        app_port = healthcheck["app_port"]
+        host_port = healthcheck["host_port"]
+        endpoints = healthcheck["endpoints"]
+        expected_status = healthcheck.get("expected_status", 200)
+
+        container_manager = ContainerManager()
+        container = container_manager.start_container(
+            image=image_tag,
+            container_name=app_name,
+            app_port=app_port,
+            host_port=host_port,
+        )
+
+        try:
+            health_success = container_manager.test_container(
+                container=container,
+                host_port=host_port,
+                endpoints=endpoints,
+                expected_status=expected_status,
+            )
+
+            if not health_success:
+                raise RuntimeError(
+                    f"Health checks failed for {app_name}"
+                )
+
+        finally:
+            try:
+                container_manager.stop_container(container)
+            finally:
+                container_manager.remove_container(container)
+
+        validator.authenticate(username=DOCKER_USER, password=DOCKER_PASS)
+        validator.push(image_tag)
+
+        app_result = {
+            "image": str(image_tag),
+            "path": str(component_dir.relative_to(PROJECT_ROOT)),
+            "runtime": runtime,
+            "extra_ci_data": extra_ci_config,
+            "platform_file": (
+                str(component["platform_file"])
+                if component["platform_file"]
+                else None
+            ),
+        }
+
+        print(f"[{app_name}] CI completed successfully")
+        return app_name, True, app_result
+
+    except Exception as exc:
+        print(
+            f"[{app_name}] CI failed "
+            f"for component {component_dir}: {exc}"
+        )
+        return app_name, False, None
+
+
+def start_app_build(classified_apps):
+    signal = True
+    tasks = [
+        (app_dir, component)
+        for app_dir, components in classified_apps.items()
+        for component in components
+    ]
+
+    if not tasks:
+        print("No components available for CI execution")
+        return False
+
+    print(
+        f"Starting CI for {len(tasks)} components "
+        f"with a maximum of {MAX_WORKERS} concurrent workers"
+    )
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        for app_dir, app_data in apps.items():
-            if not app_data:
-                continue
+        futures = {
+            executor.submit(build_component, app_dir, component): (
+                app_dir,
+                component,
+            )
+            for app_dir, component in tasks
+        }
 
-            runtime = app_data["components"][0]["runtime"]
-            if runtime not in ["python", "node", "java"]:
-                continue
-
-            if not app_data["components"][0]["dockerfile"]:
-                print(
-                  f"❌ No Build for {app_dir} \n"
-                  f"REASON: No Dockerfile Found"
-                )
-                continue
-
-            extra_data = app_data["components"][0]["ci_extra"]
-            healthcheck = extra_data.get("healthcheck", {})
-
-            if not healthcheck:
-                print(
-                  f"❌ No Build for {app_dir} \n"
-                  f"REASON: No healthcheck configuration found for {app_dir}"
-                )
-                continue
-
-            if ( not healthcheck.get("app_port") or
-                not healthcheck.get("host_port")
-            ):
-                print(
-                  f"❌ No Build for {app_dir} \n"
-                  f"REASON: one or both host_port and app_port are missing \n"
-                  f"ACTINO: Ensure both host_port and "
-                  f"app_port are provided in ci.yml"
-                )
-                continue
-
-            if not healthcheck.get("endpoints")[0]:
-                print(
-                  f"❌ No Build for {app_dir} \n"
-                  f"REASON: No healthcheck endpoint configured for {app_dir} "
-                  f"ACTION: provide it in ci.yml"
-                )
-                continue
-
-            future = executor.submit(build_app, app_dir, app_data)
-            futures[future] = app_dir
-
-        success = True
         for future in as_completed(futures):
-            app_dir = futures[future]
+            app_dir, component = futures[future]
 
             try:
-                _, result = future.result()
-                if result:
-                    print(f"✅ {app_dir.name}: completed")
+                app_name, success, app_result = future.result()
             except Exception as exc:
-                success = False
-                print(f"❌ {app_dir.name}: failed - {exc}")
+                app_name = component.get("app", "<unknown>")
+                print(
+                    f"[{app_name}] Unexpected worker failure "
+                    f"for root {app_dir}: {exc}"
+                )
 
-    print(line())
-    if success:
-        print("All applications completed successfully")
-    else:
-        print("One or more applications failed")
-    print(line())
-    return success
+                signal = False
+                continue
+
+            if success:
+                ALL_APPS[app_name] = app_result
+                print(f"[{app_name}] Result: SUCCESS")
+
+            else:
+                signal = False
+                print(f"[{app_name}] Result: FAILED")
+
+    successful_components = len(ALL_APPS)
+    print(
+        f"Component CI execution finished. "
+        f"Successful component results recorded: "
+        f"{successful_components}/{len(tasks)}"
+    )
+    return signal
+
+
+def validation_gate(validation_result):
+    if not isinstance(validation_result, dict):
+        print("Validation failed: the validator returned an invalid result.")
+        return False
+
+    valid_apps = validation_result.get("valid_apps")
+    signal = validation_result.get("signal")
+    if not isinstance(valid_apps, list):
+        print("Validation failed: valid_apps must be a list.")
+        return False
+
+    if not valid_apps:
+        print("Validation failed: no valid applications are available.")
+        return False
+
+    if STRICT_MODE and not signal:
+        print(
+            "Strict mode is enabled. Validation did not succeed completely; "
+            "the build stage will not start."
+        )
+        return False
+
+    if not STRICT_MODE and not signal:
+        print(
+            "Strict mode is disabled. Continuing with validated applications."
+        )
+    return True
+
 
 def save_data():
     if not ALL_APPS:
-      return
+        print("No successful application builds to save.")
+        return False
 
-    ROOT = project_root
-    FILE = f"{ROOT}/gitops/state/final_ci_data.json"
-    STORE["env"] = ENV
-    STORE["apps"] = ALL_APPS
-    STORE["timestamp"] = reuse.get_timestamp()
-    #print(STORE)
+    output_file = (
+        PROJECT_ROOT
+        / "gitops"
+        / "state"
+        / "final_ci_data.json"
+    )
+
+    payload = {
+        "env": ENV,
+        "apps": ALL_APPS,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
     try:
-      with open(FILE, "w") as f:
-          json.dump(STORE, f, indent=2, default=str)
-    except Exception as e:
-      raise RuntimeError(f"ERROR Saving {FILE}: {e}")
-    print(f"CI data saved: {FILE}")
+        output_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        temporary_file = output_file.with_suffix(
+            output_file.suffix + ".tmp"
+        )
+
+        temporary_file.write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
+
+        temporary_file.replace(output_file)
+
+        print(f"Final CI data saved to {output_file}")
+        return True
+
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"Failed to save final CI data: {exc}")
+        return False
+
+
+def main():
+    """
+    Orchestrate validation, classification, builds, and final data saving.
+    """
+    ALL_APPS.clear()
+
+    try:
+        validation_result = validate_apps()
+        if not validation_gate(validation_result):
+            return 1
+
+        valid_apps = validation_result["valid_apps"]
+        classified_apps = classify_apps(valid_apps)
+        if not classified_apps:
+            print("No applications remain after classification.")
+            return 1
+
+        build_signal = start_app_build(classified_apps)
+
+        if not build_signal and FAIL_MODE:
+            print("One or more application builds failed.")
+            return 1
+
+        if not save_data():
+            return 1
+        print("CI workflow completed successfully.")
+        return 0
+
+    except Exception as exc:
+        print(f"CI workflow failed: {exc}")
+        return 1
+
 
 if __name__ == "__main__":
-    success = start_app_build()
-    #print("Running save_data func...................")
-    save_data()
-    raise SystemExit(0 if success else 1)
+    sys.exit(main())

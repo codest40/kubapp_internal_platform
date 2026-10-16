@@ -1,15 +1,15 @@
+########################################
+# OS / Editor / IDE
+########################################
 
-account.name
-sample/*
+setup.env
 
-# Linux
 *~
 .fuse_hidden*
 .directory
 .Trash-*
 .nfs*
 
-# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
@@ -17,7 +17,6 @@ sample/*
 .Spotlight-V100
 .Trashes
 
-# Windows
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
@@ -27,11 +26,9 @@ $RECYCLE.BIN/
 !.vscode/settings.json
 !.vscode/extensions.json
 
-# JetBrains (IntelliJ, PyCharm, etc.)
 .idea/
 *.iml
 
-# Environment / Secrets
 .env
 .env.*
 !.env.example
@@ -45,33 +42,30 @@ $RECYCLE.BIN/
 vault.yml
 vault.yaml
 
-# Logs
-
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Python
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 
-# Virtual environments
 venv/
 .venv/
+*_venv/
+*app_venv*
 env/
-.env
-*.env
 ENV/
 
-# Python build artifacts
 build/
 dist/
 *.egg-info/
 .eggs/
+
+*__pycache__*
 
 # Pytest / coverage
 .pytest_cache/
@@ -79,7 +73,9 @@ dist/
 .coverage.*
 htmlcov/
 
+########################################
 # Node.js
+
 node_modules/
 npm-cache/
 .yarn/
@@ -87,46 +83,34 @@ npm-cache/
 .pnpm-store/
 
 # Docker
-# Docker runtime artifacts
 docker-compose.override.yml
-
-# Local Docker volumes
 docker-data/
 data/
 
 # Terraform
-
-# Terraform directories
 .terraform/
-# .terraform.lock.hcl
-
-# Terraform state
 *.tfstate
 *.tfstate.*
 terraform.tfvars
 terraform.tfvars.json
+*.tfvars
 
 # Plan files
 *.tfplan
 *.out
-*.tfvars
 
 # Crash logs
 crash.log
 
 # Ansible retry files
 *.retry
-
-# Ansible inventory secrets
 inventory/*/group_vars/*/vault.yml
 inventory/*/host_vars/*/vault.yml
 
 # Kubernetes / Helm
 *.kubeconfig
-charts/**/charts/
-charts/**/tmp/
 
-# GitHub Actions local artifacts
+# CI / CD
 .act/
 
 # Archives / Binaries
@@ -145,11 +129,8 @@ temp/
 *.swp
 *.swo
 *.bak
-*.bak.*
 *.old
 
 # Documentation build artifacts
 site/
 docs/_build/
-artifacts/
-.backup/

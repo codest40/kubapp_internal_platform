@@ -1,19 +1,14 @@
-from pathlib import Path
-import os
-import subprocess
-from datetime import datetime
+from dependency_abstractor import classify_apps
+from validate import validate_apps
 
-manifest_list = {"requirements.txt": "python", "pyproject.toml": "python",
-                 "pom.xml": "java", "build.gradle": "java",
-                 "build.gradle.kts": "java", "package.json": "node",
-                 "go.mod": "golang" }
+result = validate_apps()
+classified = classify_apps(result["valid_apps"])
 
-extra_args_list = {
-    "java": {"lint": ["mvn", "checkstyle:check"],
-            "security": ["mvn", "org.owasp:dependency-check-maven:check", ],
-            "test": ["mvn", "test"],
-            "build": ["mvn", "package", "-DskipTests", ], },
-}
+for app_dir, app_data in classified.items():
+    print(f"\nParent: {app_dir}")
 
-b = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-print(b)
+    for component in app_data:
+        print(f"  App:       {component['app']}")
+        print(f"  Component: {component['component_dir']}")
+        print(f"  Manifest:  {component['manifest']}")
+        print(f"  Dockerfile: {component['dockerfile']}")

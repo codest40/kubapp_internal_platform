@@ -8,7 +8,7 @@ MANIFESTS = {
     "go.mod": "golang",
 }
 
-EXTRA_FILES = {"package-lock.json": "node",}
+EXTRA_MANIFESTS = {"package-lock.json": "node",}
 
 CACHE_RUNTIMES = {"java",}
 
