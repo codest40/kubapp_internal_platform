@@ -1,6 +1,3 @@
-########################################
-# OS / Editor / IDE
-########################################
 
 setup.env
 
@@ -81,6 +78,33 @@ npm-cache/
 .yarn/
 .yarn-cache/
 .pnpm-store/
+
+################################
+# Java
+
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+target/
+build/
+out/
+bin/
+
+# Gradle
+
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Maven
+
+.mvn/timing.properties
+
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
 
 # Docker
 docker-compose.override.yml
