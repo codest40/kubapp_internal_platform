@@ -3,14 +3,6 @@ name: Activate Pipeline Workflows
 on:
   workflow_dispatch:
     inputs:
-      env:
-        required: true
-        default: dev
-        type: choice
-        options:
-          - dev
-          - prod
-
       mode:
         required: true
         default: full
@@ -20,6 +12,28 @@ on:
           - build
           - rollback
           - cleanup
+      env:
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
+      STRICT_MODE:
+        required: true
+        default: true
+        type: choice
+        options:
+          - true
+          - false
+      FAIL_MODE:
+        required: true
+        default: true
+        type: choice
+        options:
+          - true
+          - false
+
 
 permissions:
   contents: write

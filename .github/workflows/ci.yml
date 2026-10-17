@@ -7,6 +7,12 @@ on:
       env:
         required: true
         type: string
+      STRICT_MODE:
+        required: true
+        type: string
+      FAIL_MODE:
+        required: true
+        type: string
     secrets:
       DOCKER_USER:
         required: true
@@ -23,6 +29,22 @@ on:
         options:
           - dev
           - prod
+      mode:
+        description: Strict Validation Mode
+        required: false
+        default: true
+        type: choice
+        options:
+          - false
+          - true
+      fail_mode:
+        description: Build failure Terminate
+        required: false
+        default: true
+        type: choice
+        options:
+          - false
+          - true
 
 permissions:
   contents: write
@@ -32,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
         ENV: ${{ inputs.env || 'dev' }}
+        STRICT_MODE: ${{ inputs.mode || 'true' }}
+        FAIL_MODE: ${{ inputs.fail_mode || 'true' }}
 
     steps:
       - name: Source code checkout
@@ -44,12 +68,29 @@ jobs:
       - name: Check Python
         run: bash scripts/ci/check_python.sh
 
+      - name: Setup SOPS and Age Key
+        run: |
+          set -euo pipefail
+          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/sops
+
+          mkdir -p ~/.config/sops/age
+          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+          test -s ~/.config/sops/age/keys.txt || {
+            echo "❌ AGE key missing"
+            exit 1
+          }
+
       - name: Call Dependency Abstractor
         run: python scripts/ci/dependency_abstractor.py
         env:
             NVD_API_KEY: "${{ secrets.NVD_API_KEY }}"
             DOCKER_USER: "${{ secrets.DOCKER_USER }}"
             DOCKER_PASS: "${{ secrets.DOCKER_PASS }}"
+            STRICT_MODE: "${{ env.STRICT_MODE }}"
+            FAIL_MODE: "${{ env.FAIL_MODE }}"
             ENV: "${{ env.ENV }}"
 
       - name: Commit App Build + Push

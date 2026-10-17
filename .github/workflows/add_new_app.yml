@@ -200,6 +200,25 @@ jobs:
           echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
           chmod 600 ~/.config/sops/age/keys.txt
 
+      - name: Reconcile App Direcory, ensure no stale app
+        env:
+          ENV: ${{ env.ENV }}
+          REGISTRY: gitops/registry
+        run: |
+            set -euo pipefail
+            python scripts/platform/reconcile_app_values.py
+
+      - name: Update Database Secret file
+        working-directory: iac/database
+        env:
+          RUN: cicd
+        run: |
+            set -euo pipefail
+            bash runner.sh init
+            DB_HOST=$(terraform output -raw database_endpoint 2>/dev/null || true)
+            DB_HOST="$DB_HOST" \
+            python "$GITHUB_WORKSPACE/scripts/platform/update_kubapp_db_secret_file.py"
+
       - name: Get Cert Arn From Terraform
         working-directory: iac/infra
         run: |
@@ -250,6 +269,7 @@ jobs:
             SERVICE=$(jq -r '.service' "$file")
             ENV=$(jq -r '.env' "$file")
             NO_SECRETS=$(jq -r '.NO_SECRETS' "$file")
+            DB_ACCESS=$(jq -r '.dbAccess // false' "$file")
 
             if [[ "$ENV1" != "$ENV" ]]; then
               echo "❌ Enviroment Mismatch. Workflow Must run in one environment"
@@ -272,29 +292,40 @@ jobs:
             SERVICE_TYPE=$(jq -r '.type' "$file")
             COMPUTE_TYPE=$(jq -r '.computeType' "$file")
 
-            if [[ "$SERVICE_TYPE" == "App" ]]; then
+            if [[ "${SERVICE_TYPE,,}" == "app" ]]; then
               export BACKEND_SERVICE=""
               export SERVICE_PORT="80"
               export SERVICE_TYPE=$SERVICE_TYPE
               if [[ "$COMPUTE_TYPE" == "fargate" ]]; then
                 export HPA_ENABLED="true"
               fi
-            ####################################################
-            # Create values.yaml
-            ####################################################
-              echo "Creating values.yaml..."
-              bash scripts/gitops/create_values.sh "$file"
 
             ####################################################
             # Inject runtime env + encrypted secrets
             ####################################################
               echo "Preparing runtime env + secrets..."
-              if [[ "$NO_SECRETS" == "false" ]]; then
-                bash scripts/gitops/create_secrets.sh "$file"
-                echo "✅ Secrets for $SERVICE Updated!"
+              if [[ "$NO_SECRETS" == "true" && "$DB_ACCESS" == "false" ]]; then
+                echo "$SERVICE has no app secrets and didnt ask for kubapp database"
               else
-                echo "$SERVICE has No secrets"
+                set +e
+                bash scripts/gitops/create_secrets.sh "$file"
+                SECRET_STATUS=$?
+                set -e
+                if [[ "$SECRET_STATUS" -eq 10 ]]; then
+                  echo "⚠️ Skipping $SERVICE — required database is inactive"
+                    continue
+                elif [[ "$SECRET_STATUS" -ne 0 ]]; then
+                  echo "❌ Secret processing failed for $SERVICE"
+                  exit "$SECRET_STATUS"
+                fi
+                echo "✅ Secrets for $SERVICE Updated!"
               fi
+
+            ####################################################
+            # Create values.yaml
+            ####################################################
+              echo "Creating values.yaml..."
+              bash scripts/gitops/create_values.sh "$file"
 
             ####################################################
             # Register app in shared ingress
