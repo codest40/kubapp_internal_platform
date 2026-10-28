@@ -15,9 +15,8 @@ Each application root must:
 Optional files include:
 
 - `kubapp.yml` — deployment and runtime configuration.
-- `secrets.yml` — encrypted application secrets.
 - `ci_secrets.yml` — CI-specific secrets, when required.
-- `platform_secrets.yml` — platform-level secrets, where supported.
+- `secrets.yml` or `platform_secrets.yml` — platform-level secrets, where supported.
 - Application-specific dependency manifests and source code.
 
 KUBAPP discovers application roots using the `_app` naming convention. It then searches each root recursively for `ci.yml` files. Each discovered `ci.yml` identifies a component directory.
@@ -52,7 +51,6 @@ KUBAPP uses separate files for separate responsibilities.
 | `kubapp.yml` | Provides application deployment and runtime configuration. |
 | `secrets.yml` | Holds encrypted application secrets. |
 | `ci_secrets.yml` | Provides the default CI secrets-file name. A different path can be configured in `ci.yml`. |
-| `platform_secrets.yml` | Separate platform-level secrets file, where supported by the platform implementation. |
 | `Dockerfile` | Defines how the application container image is built. |
 | Dependency manifests | Describe application dependencies and support runtime detection. |
 
@@ -100,7 +98,7 @@ The exact fields accepted by `kubapp.yml` depend on the platform's configuration
 
 ### 3.3 Application Secrets: `secrets.yml`
 
-`secrets.yml` is used for application secrets managed through the application's configuration and deployment workflow.
+`secrets.yml` or `platform_secrets.yml` is used for application secrets managed through the application's configuration and deployment workflow.
 
 Repository-managed secrets must be encrypted before they are committed. KUBAPP's repository workflow uses SOPS for encrypted secrets.
 
@@ -120,14 +118,6 @@ CI secrets must remain distinct from application secrets. Supply credentials onl
 
 The presence of a configured secrets-file path does not, by itself, establish how or when its contents are loaded. That behavior depends on the relevant CI implementation.
 
-### 3.5 Platform Secrets: `platform_secrets.yml`
-
-`platform_secrets.yml` is separate from application secrets and CI secrets.
-
-Where KUBAPP uses this file for platform-level secrets, follow the platform's corresponding configuration and secret-management process.
-
-Its exact schema, loading behavior, and consumers must be determined from the platform code that implements them. Do not treat it as the default CI secrets file or substitute it for `secrets.yml`.
-
 ### 3.6 Application Files and Dependency Manifests
 
 Application source files and dependency manifests remain specific to the application's language and build system.
@@ -140,9 +130,8 @@ Manifest paths can be configured through `file_paths.manifest_files`. Configured
 
 KUBAPP distinguishes between three secret categories:
 
-- **Application secrets:** `secrets.yml`
+- **Application secrets:** `secrets.yml` or `platform_secrets.yml`
 - **CI secrets:** `ci_secrets.yml` by default, configurable through `file_paths.secret_file`
-- **Platform secrets:** `platform_secrets.yml`, where used by the platform
 
 These files serve different purposes and must not be assumed to be interchangeable.
 
