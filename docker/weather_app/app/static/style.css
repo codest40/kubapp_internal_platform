@@ -1,0 +1,252 @@
+/* -------------------------
+   THEME VARIABLES
+-------------------------- */
+:root {
+    --bg: #f4f6f8;
+    --text: #1f2937;
+    --card: #ffffff;
+    --border: #d1d5db;
+    --primary: #007acc;
+    --primary-hover: #005fa3;
+    --muted: #6b7280;
+    --shadow: rgba(0, 0, 0, 0.1);
+
+    --success-bg: #d4edda;
+    --success-text: #155724;
+}
+
+/* Dark theme */
+html[data-theme="dark"] {
+    --bg: #0b1220;
+    --text: #e5e7eb;
+    --card: #111827;
+    --border: #374151;
+    --primary: #38bdf8;
+    --primary-hover: #0ea5e9;
+    --muted: #9ca3af;
+    --shadow: rgba(0, 0, 0, 0.35);
+
+    --success-bg: rgba(16, 185, 129, 0.15);
+    --success-text: #a7f3d0;
+}
+
+/* -------------------------
+   BASE RESET
+-------------------------- */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0;
+}
+
+/* -------------------------
+   NAVBAR
+-------------------------- */
+.navbar {
+    width: 100%;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.nav-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.brand {
+    text-decoration: none;
+    font-weight: bold;
+    color: var(--text);
+    font-size: 18px;
+}
+
+.nav-links {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.nav-link {
+    text-decoration: none;
+    color: var(--muted);
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: 0.2s;
+}
+
+.nav-link:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text);
+}
+
+html[data-theme="dark"] .nav-link:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-link.active {
+    color: var(--text);
+    font-weight: bold;
+    border: 1px solid var(--border);
+}
+
+.theme-btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--text);
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.theme-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* -------------------------
+   PAGE + CONTAINER
+-------------------------- */
+.page {
+    padding: 30px 16px;
+}
+
+.container {
+    max-width: 520px;
+    margin: 0 auto;
+    background: var(--card);
+    padding: 28px;
+    border-radius: 14px;
+    box-shadow: 0 6px 18px var(--shadow);
+    border: 1px solid var(--border);
+}
+
+/* -------------------------
+   HEADINGS
+-------------------------- */
+h1 {
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--primary);
+}
+
+/* -------------------------
+   FORMS
+-------------------------- */
+.form input,
+.form select,
+.form button {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+}
+
+.form input::placeholder {
+    color: var(--muted);
+}
+
+.form button {
+    background-color: var(--primary);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.2s;
+}
+
+.form button:hover {
+    background-color: var(--primary-hover);
+}
+
+/* -------------------------
+   WEATHER BOX
+-------------------------- */
+.weather-info {
+    text-align: center;
+    margin-top: 18px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(0, 122, 204, 0.08);
+}
+
+/* -------------------------
+   MESSAGE BOX
+-------------------------- */
+.message {
+    margin-top: 15px;
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    font-weight: bold;
+    display: none;
+    border: 1px solid var(--border);
+}
+
+.message.show {
+    display: block;
+    background-color: var(--success-bg);
+    color: var(--success-text);
+}
+
+/* -------------------------
+   RESPONSIVE
+-------------------------- */
+
+/* Tablets / medium screens */
+@media (max-width: 1024px) {
+    .container {
+        max-width: 440px;
+        padding: 24px;
+    }
+
+    .navbar {
+        justify-content: center;
+    }
+}
+
+/* Mobile phones */
+@media (max-width: 600px) {
+    .container {
+        max-width: 100%;
+        margin: 20px 12px;
+        padding: 20px;
+    }
+
+    .nav-left {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .nav-links {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .nav-link {
+        width: 100%;
+        text-align: left;
+    }
+
+    .theme-btn {
+        margin-top: 10px;
+    }
+}

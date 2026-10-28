@@ -1,0 +1,39 @@
+
+service:
+  name: weather
+  compute: fargate
+
+app:
+  port: 8080
+  appUser: weather_app
+  healthPath: /health
+  livePath: /live
+  basePath: /
+
+deploy:
+  env: dev
+  containerUid: 10006
+
+runtime:
+  env:
+    DATABASE_URL: postgresql://kubuser:kubpassword@postgres:5432/kubapp
+    USE_SQLITE: "true"
+    BOTH_DB: "true"
+    RUN_MIGRATIONS: "true"
+
+storage:
+  volumes:
+    - name: edgepaas-vol
+      emptyDir: {}
+
+  volumeMounts:
+    - name: edgepaas-vol
+      mountPath: /tmp
+
+features:
+  topVolume:
+    enabled: true
+  tmp:
+    enabled: true
+  serviceMonitor:
+    enabled: true

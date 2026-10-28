@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Save Preferences</title>
+
+    <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="/static/theme.js"></script>
+</head>
+
+<body>
+    <!-- Top Navigation -->
+    <header class="navbar">
+        <div class="nav-left">
+            <a class="brand" href="/">WeatherApp</a>
+
+            <nav class="nav-links">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/preferences" class="nav-link active">Preferences</a>
+            </nav>
+        </div>
+
+        <div class="nav-right">
+            <button id="themeToggle" class="theme-btn" type="button">
+                🌒 Dark
+            </button>
+        </div>
+    </header>
+
+    <main class="page">
+        <div class="container">
+            <h1>Save Your Weather Preferences</h1>
+
+            <form id="prefForm" class="form">
+                <input type="text" name="name" placeholder="Your Name" required />
+                <input type="email" name="email" placeholder="Your Email" required />
+                <input type="text" name="city" placeholder="City" required />
+
+                <select name="alert_type">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                </select>
+
+                <button type="submit">Save Preferences</button>
+            </form>
+
+            <div id="message" class="message"></div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

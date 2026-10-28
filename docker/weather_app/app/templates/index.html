@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather Service</title>
+
+    <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="/static/theme.js"></script>
+    <script defer src="/static/app.js"></script>
+</head>
+
+<body>
+    <!-- Top Navigation -->
+    <header class="navbar">
+        <div class="nav-left">
+            <a class="brand" href="/">WeatherApp</a>
+
+            <nav class="nav-links">
+                <a href="/" class="nav-link active">Home</a>
+                <a href="/preferences" class="nav-link">Preferences</a>
+            </nav>
+        </div>
+
+        <div class="nav-right">
+            <button id="themeToggle" class="theme-btn" type="button">
+               🌒 Dark
+            </button>
+        </div>
+    </header>
+
+    <main class="page">
+        <div class="container">
+            <h1>Weather Checker</h1>
+
+            <form method="post" action="/weather" class="form">
+                <input type="text" name="city" placeholder="Enter city" required />
+                <button type="submit">Get Weather</button>
+            </form>
+
+            {% if weather %}
+            <div class="weather-info">
+                <h2>Weather in {{ weather.city }}</h2>
+                <p><b>Temperature:</b> {{ weather.temperature }}°C</p>
+                <p><b>Description:</b> {{ weather.description }}</p>
+            </div>
+            {% endif %}
+
+            <h3>Current Time</h3>
+            <div id="current-time" style="font-weight:bold; text-align:center; margin-bottom:10px;"></div>
+        </div>
+    </main>
+</body>
+</html>
