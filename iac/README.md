@@ -6,9 +6,10 @@
 ## The system is structured into four major domains:
 ```
  iac/
+ ├── database/     # Database
  ├── infra/        # AWS + EKS infrastructure modules
- ├── k8s/          # Kubernetes platform configuration layer
- ├── manifests/    # Kubernetes resources via Terraform
+ ├── k8s/          # Kubernetes base configuration layer
+ ├── manifests/    # Extra resources
  ├── boot/         # Terraform backend bootstrap
  ├── dns/          # Dedicated DNS backend
  ├── README.md
@@ -18,8 +19,8 @@
 
  This IaC layer follows a 3-tier infrastructure model:
 
- 1. FOUNDATION LAYERS (boot + dns)
+ 1. FOUNDATION LAYER (boot + dns)
  2. INFRASTRUCTURE LAYER (infra)
  3. PLATFORM LAYER (k8s + manifests)
-
+ 4. DATABASE LAYER (database)
 
