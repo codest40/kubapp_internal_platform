@@ -1,55 +1,65 @@
-
+##### KUBAPP SETUP CONFIGURATION
 setup.env
 
+##### EDITOR BACKUPS AND TEMPORARY FILES
 *~
+*.swp
+*.swo
+*.bak
+*.old
+
+##### FILESYSTEM AND DESKTOP METADATA
 .fuse_hidden*
 .directory
 .Trash-*
 .nfs*
-
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
 .Spotlight-V100
 .Trashes
-
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
+##### EDITOR CONFIGURATION
 # VS Code
 .vscode/
 !.vscode/settings.json
 !.vscode/extensions.json
-
 .idea/
 *.iml
 
+##### ENVIRONMENT FILES AND SECRETS
 .env
 .env.*
 !.env.example
-
 *.key
 *.pem
 *.crt
 *.pfx
 *.p12
-
 vault.yml
 vault.yaml
 
+##### LOGS AND CRASH REPORTS
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+crash.log
 
+##### PYTHON CACHE AND VIRTUAL ENVIRONMENTS
 __pycache__/
+*__pycache*
 *.py[cod]
 *.pyo
 *.pyd
-
 venv/
 .venv/
 *_venv/
@@ -57,61 +67,50 @@ venv/
 env/
 ENV/
 
+##### PYTHON BUILD AND PACKAGE ARTIFACTS
 build/
 dist/
 *.egg-info/
 .eggs/
 
-*__pycache__*
-
-# Pytest / coverage
+##### PYTEST AND COVERAGE
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
 
-########################################
-# Node.js
-
+##### NODE.JS DEPENDENCIES AND CACHE
 node_modules/
 npm-cache/
 .yarn/
 .yarn-cache/
 .pnpm-store/
 
-################################
-# Java
-
+##### JAVA BUILD ARTIFACTS
 *.class
 *.jar
 *.war
 *.ear
 *.nar
-
 target/
 build/
 out/
 bin/
 
-# Gradle
-
+##### GRADLE BUILD ARTIFACTS
 .gradle/
 !gradle/wrapper/gradle-wrapper.jar
 
-# Maven
+##### MAVEN ARTIFACTS
+*.dependency-check-data*
+*.mvn/timing.properties*
 
-.mvn/timing.properties
-
-hs_err_pid*.log
-replay_pid*.log
-*.hprof
-
-# Docker
+##### DOCKER AND APPLICATION DATA
 docker-compose.override.yml
 docker-data/
 data/
 
-# Terraform
+##### TERRAFORM STATE AND CONFIGURATION
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -119,25 +118,21 @@ terraform.tfvars
 terraform.tfvars.json
 *.tfvars
 
-# Plan files
 *.tfplan
 *.out
 
-# Crash logs
-crash.log
-
-# Ansible retry files
+##### ANSIBLE RETRY AND VAULT FILES
 *.retry
 inventory/*/group_vars/*/vault.yml
 inventory/*/host_vars/*/vault.yml
 
-# Kubernetes / Helm
+##### KUBERNETES AND HELM
 *.kubeconfig
 
-# CI / CD
+##### CI/CD LOCAL ARTIFACTS
 .act/
 
-# Archives / Binaries
+##### ARCHIVES AND COMPRESSED FILES
 *.zip
 *.tar
 *.tar.gz
@@ -145,16 +140,12 @@ inventory/*/host_vars/*/vault.yml
 *.rar
 *.7z
 
-# Temporary / Misc
+##### TEMPORARY DIRECTORIES AND CACHE
 tmp/
 temp/
 .cache/
 .cache/**
-*.swp
-*.swo
-*.bak
-*.old
 
-# Documentation build artifacts
+##### DOCUMENTATION BUILD ARTIFACTS
 site/
 docs/_build/
