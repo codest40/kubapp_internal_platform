@@ -17,7 +17,7 @@
 
 ## ARCHITECTURE
 
- This IaC layer follows a 3-tier infrastructure model:
+ This IaC layer follows a 4-tier infrastructure model:
 
  1. FOUNDATION LAYER (boot + dns)
  2. INFRASTRUCTURE LAYER (infra)
