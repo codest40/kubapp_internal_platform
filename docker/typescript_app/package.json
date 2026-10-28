@@ -1,0 +1,26 @@
+{
+  "name": "typescript-ci-sample",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A TypeScript HTTP API for testing KUBAPP CI",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

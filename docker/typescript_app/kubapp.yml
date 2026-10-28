@@ -1,0 +1,6 @@
+
+service:
+  compute: ec2
+
+
+

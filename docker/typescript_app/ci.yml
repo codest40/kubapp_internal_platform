@@ -1,0 +1,26 @@
+runtime: node
+
+ci_commands:
+  lint:
+    - npm
+    - run
+    - lint
+
+  security:
+    - npm
+    - run
+    - typecheck
+
+  test:
+    - npm
+    - test
+
+security_env: []
+
+extra_ci_config:
+  healthcheck:
+    app_port: 3000
+    host_port: 3000
+    endpoints:
+      - /health
+    expected_status: 200
