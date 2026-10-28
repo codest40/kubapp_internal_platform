@@ -18,6 +18,7 @@ Security, cost efficiency, and operational simplicity guide the platform's desig
 ## Documentation
 
 - [Setup and Initialization](./SETUP.md)
+- [Platform Design Approach](docs/README.md)
 - [Platform Outline](docs/outline.md)
 - [Repository Structure](docs/repo_structure.md)
 - [Execution Flow](docs/execution_flow.md)
