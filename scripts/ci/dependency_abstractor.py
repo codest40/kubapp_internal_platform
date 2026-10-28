@@ -25,9 +25,7 @@ FAIL_MODE = os.getenv("FAIL_MODE", "true").strip().lower() == "true"
 PROJECT_ROOT = Path(reuse.get_root())
 RUNTIME_LIST = set(MANIFESTS.values())
 MAX_WORKERS = 4
-
 ALL_APPS = {}
-STORE = {}
 
 
 def is_file_okay(path):
