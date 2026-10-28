@@ -54,8 +54,3 @@ These integrations allow deployment configuration to describe not only how an ap
 - **Prometheus integration:** Enables supported applications to expose metrics through ServiceMonitor resources.
 - **AWS Load Balancer Controller integration:** Supports ingress-based application exposure through AWS load balancers.
 
-## Design Outcome
-
-KUBAPP's GitOps model establishes a clear separation between building applications, defining their runtime configuration, and reconciling their deployment state.
-
-By combining declarative configuration, reusable Helm charts, application discovery, and automated reconciliation, the platform provides a consistent way to manage Kubernetes application delivery while keeping deployment changes traceable through Git.
