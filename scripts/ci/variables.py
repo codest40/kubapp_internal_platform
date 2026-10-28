@@ -1,15 +1,38 @@
 MANIFESTS = {
     "requirements.txt": "python",
     "pyproject.toml": "python",
-    "pom.xml": "java",
-    "build.gradle": "java",
-    "build.gradle.kts": "java",
     "package.json": "node",
-    "go.mod": "golang",
+    "tsconfig.json": "node",
 }
 
-EXTRA_MANIFESTS = {"package-lock.json": "node",}
+RUNTIME_IMAGES = {
+    "python": "docker.io/library/python:3.12-slim",
+    "node": "docker.io/library/node:22-slim",
+}
 
-CACHE_RUNTIMES = {"java",}
+RUNTIME_DEPENDENCY_CONFIG = {
+    "python": {
+        "dependency_path": "venv",
+        "executable_path": "venv/bin",
+        "required_path": "venv/bin/python",
+    },
+    "node": {
+        "dependency_path": "node_modules",
+        "executable_path": "node_modules/.bin",
+        "required_path": "node_modules/.package-lock.json",
+    },
+}
 
+EXTRA_MANIFESTS = {
+    "package-lock.json": "node",
+}
+
+CACHE_RUNTIMES = {}
 CI_COMMANDS = {}
+
+COMPONENT_ENV_ALLOWLIST = {
+    "DOCKER_USER",
+    "DOCKER_PASS",
+    "ENV",
+}
+

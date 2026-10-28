@@ -1,7 +1,6 @@
 from pathlib import Path
 import yaml
 import reuse
-from java_handler import JavaHandler
 from node_handler import NodeHandler
 from python_handler import PythonHandler
 from variables import EXTRA_MANIFESTS, MANIFESTS
@@ -19,7 +18,6 @@ VALID_APP_SUFFIX = "_app"
 HANDLERS = {
     "python": PythonHandler,
     "node": NodeHandler,
-    "java": JavaHandler,
 }
 
 

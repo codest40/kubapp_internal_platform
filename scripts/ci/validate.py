@@ -7,7 +7,6 @@ from detect_runtime import (
 )
 from variables import MANIFESTS, EXTRA_MANIFESTS
 
-
 line = reuse.line_logger("=", 60)
 PROJECT_ROOT = reuse.get_root("path")
 SUPPORTED_FILE_PATH_KEYS = {

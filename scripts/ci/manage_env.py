@@ -2,10 +2,10 @@ import os
 import re
 import subprocess
 from pathlib import Path
-
 import yaml
-
 from reuse import ci_log
+from component_execution_env import ComponentEnvironment
+from variables import COMPONENT_ENV_ALLOWLIST
 
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -34,9 +34,7 @@ def load_component_secrets(app_name, secret_file):
     try:
         file_content = secrets_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        message = (
-            f"[{app_name}] Unable to read the CI secrets file."
-        )
+        message = f"[{app_name}] Unable to read the CI secrets file."
         ci_log(message, "ERROR")
         raise RuntimeError(message) from exc
 
@@ -67,9 +65,7 @@ def load_component_secrets(app_name, secret_file):
         ci_log(message, "ERROR")
         raise RuntimeError(message) from exc
     except OSError as exc:
-        message = (
-            f"[{app_name}] Unable to execute SOPS."
-        )
+        message = f"[{app_name}] Unable to execute SOPS."
         ci_log(message, "ERROR")
         raise RuntimeError(message) from exc
 
@@ -141,17 +137,22 @@ def load_component_secrets(app_name, secret_file):
     return validated_secrets
 
 
-def prepare_component_environment(app_name, secret_file, security_env):
+def prepare_component_environment(
+    app_name,
+    component_dir,
+    secret_file,
+    security_env,
+    execution_image=None,
+    runtime=None,
+):
     """
-    Prepare an isolated environment for one CI component.
+    Prepare a component's environment and execution context.
     """
     if security_env is None:
         security_env = []
 
     if not isinstance(security_env, list):
-        message = (
-            f"[{app_name}] security_env must be a list."
-        )
+        message = f"[{app_name}] security_env must be a list."
         ci_log(message, "ERROR")
         raise RuntimeError(message)
 
@@ -203,12 +204,25 @@ def prepare_component_environment(app_name, secret_file, security_env):
             ci_log(message, "ERROR")
             raise RuntimeError(message)
 
-    component_env = os.environ.copy()
+    component_env = {
+        name: os.environ[name]
+        for name in COMPONENT_ENV_ALLOWLIST
+        if name in os.environ
+    }
     component_env.update(secrets)
 
+    execution_environment = ComponentEnvironment(
+        app_name=app_name,
+        component_dir=component_dir,
+        component_env=component_env,
+        execution_image=execution_image,
+        runtime=runtime,
+    )
+
     ci_log(
-        f"[{app_name}] Component environment prepared successfully.",
+        f"[{app_name}] Component environment and execution context "
+        "prepared successfully.",
         "SUCCESS",
     )
 
-    return component_env
+    return execution_environment

@@ -100,7 +100,6 @@ class ContainerManager:
                 )
 
                 print(f"[{container}] logs:\n{app_log.stdout}")
-
                 if app_log.stderr:
                     print(f"[{container}] log errors:\n{app_log.stderr}")
 

@@ -1,751 +1,164 @@
-# CI System
+# KUBAPP CI
 
-The CI system is the application build and validation layer of KUBAPP.
+KUBAPP CI is the platform's application build, security validation, and image delivery component. It manages the workflow that prepares application images for downstream KUBAPP deployment stages, with security and controlled execution treated as core requirements.
 
-It discovers applications from the `docker/` directory, detects their runtime from their manifests, loads application-specific CI configuration, runs the required quality gates, builds and pushes Docker images, validates the resulting containers, and produces deployment data for the downstream platform and GitOps stages.
+## Purpose and Scope
 
-The CI system currently supports:
+KUBAPP CI centralizes application discovery, configuration validation, dependency preparation, security checks, application testing, image building, and publication. It is designed as a distinct, independently manageable component that integrates with the wider KUBAPP platform through defined responsibilities and outputs.
 
-* Python
-* Node.js
-* Java
+This separation allows CI to evolve independently while continuing to contribute reliably to KUBAPP's application delivery workflow. Security is a foundational consideration: application inputs are validated, executable operations are controlled, and required checks must pass before an application can progress through the normal delivery process.
 
----
+## Design Approach
 
-## CI Flow
+KUBAPP CI follows a practical, security-conscious design approach built around four priorities: **secure execution environments, cost-effective resource usage, simplicity that works reliably, and runtime agnosticism**.
+
+The goal is to solve real platform requirements without introducing unnecessary complexity. Design decisions are guided by their practical value, favoring solutions that are understandable, maintainable, and effective over abstractions that add little operational benefit.
+
+The architecture separates shared CI responsibilities from runtime-specific application handling. Python and Node.js are currently supported, while the design aims to accommodate additional runtimes through compatible handlers and dependency-management implementations without requiring a complete redesign.
+
+KUBAPP also aims to balance platform control with developer freedom. Developers can define application-specific validation and testing requirements, while KUBAPP retains responsibility for the shared workflow, security boundaries, and conditions for successful delivery.
+
+## Key Engineering Decisions and Trade-offs
+
+### 1. Controlled Command Execution and Isolation
+
+KUBAPP treats developer-supplied commands, scripts, and other executable inputs as potentially malicious by default. The objective is to prevent application-level execution from unnecessarily exposing the platform or its underlying host to risk.
+Component-controlled commands run through a dedicated Podman execution boundary. Restrictions are intended to limit filesystem access, privileges, network connectivity, and resource consumption, while command policies provide additional control over permitted commands and arguments.
+This prioritizes platform protection over unrestricted execution flexibility. The trade-off is additional execution overhead and the need to manage compatibility, environment constraints, and the limitations of container-based isolation.
+Currently uses `pip-audit` to check Python application dependencies for known vulnerabilities and `npm audit` for Node.js application dependencies. These checks are managed by KUBAPP as part of its centralized dependency security process.
+
+### 2. AI-Assisted Security Assessment
+
+Static command policies alone cannot evaluate every potential security risk in developer-supplied inputs. KUBAPP therefore uses AI-assisted assessment to analyze applicable artifacts and provide findings that can inform platform decisions.
+
+Through its Model Context Protocol (MCP) integration, KUBAPP CI supports Ollama for local model execution, OpenAI API models, and Google's Gemini API. This provides flexibility to select a provider based on available computing resources, assessment requirements, and operational preferences.
+
+**AI advises; KUBAPP decides.** The AI layer does not execute assessed artifacts or independently authorize CI operations. KUBAPP retains operational authority through its own validation rules and decision logic.
+
+AI assessment introduces additional processing time and dependence on the configured provider. To manage contention during concurrent builds, KUBAPP serializes assessment requests through a controlled locking mechanism and allows additional time for assessments to complete. This improves control over assessment execution but can increase overall pipeline duration.
+
+### 3. Centralized Dependency Security and SBOM Generation
+
+KUBAPP CI takes responsibility for dependency installation, vulnerability checks, and SBOM generation rather than delegating these core operations to developer-supplied scripts.
+
+Dependency installation requires network access and sufficient filesystem permissions to retrieve packages and prepare dependency artifacts. KUBAPP therefore uses a separately prepared container environment for this work, while developer-controlled commands run through the more restrictive Podman execution boundary.
+
+Dependency vulnerability checks are part of the required build workflow. Failures in required checks prevent the affected component from progressing normally. SBOM generation also provides a record of application dependencies, improving visibility into the components included in a build.
+
+Centralizing these responsibilities gives KUBAPP greater control over dependency security and consistency. The trade-off is additional processing time, environment-management complexity, and the need to implement compatible dependency-management workflows as new runtimes are introduced.
+
+### 4. Concurrent Builds and Component Separation
+
+KUBAPP processes application components concurrently to reduce overall build time. Each component build runs in its own thread and is designed to use a dedicated, non-shared execution environment, keeping its working state, environment variables, and execution context separate from other components and the local host.
+
+This approach improves throughput while aiming to prevent cross-component interference and unintended data corruption. The trade-off is additional resource consumption and the need to manage shared platform state and host-level operations carefully.
+
+AI assessment remains a serialized operation within this concurrent workflow, so components may wait for assessment access even when their builds are otherwise running concurrently.
+
+### 5. Container Health Verification Before Publication
+
+A successful image build does not necessarily mean the application inside the image will run correctly. KUBAPP CI therefore starts the built application container and tests its configured health endpoints before publishing the image.
+
+This acts as the final application validation stage. If the container fails to start or the required health checks fail, the component's build is marked unsuccessful and its image is not published through the normal CI workflow.
+
+The trade-off is additional execution time and resource consumption in exchange for greater confidence that published images contain applications that start and respond as expected.
+
+### 6. Developer Flexibility and Configuration Requirements
+
+KUBAPP is intended to be an open-ended platform that accommodates different applications and development preferences. Developers can supply application-specific CI commands and scripts to define requirements such as linting, application-specific security analysis, and unit testing.
+
+Each application must provide the required configuration values in a `ci.yml` file within its application root directory under `docker/`. KUBAPP discovers this configuration automatically and uses it to determine the component's CI requirements and execution path.
+
+This establishes a consistent configuration contract while allowing flexibility in application-specific checks. The trade-off is that developer-supplied execution introduces security and compatibility considerations, requiring configuration validation, command policies, AI-assisted assessment where applicable, and controlled execution.
+
+**The goal is to give developers meaningful freedom without making platform security optional.**
+
+### 7. Failure Handling and Security Gates
+
+KUBAPP CI uses security and validation gates throughout the workflow so that individual stages can enforce their requirements before allowing processing to continue.
+
+The `STRICT_MODE` and `FAIL_MODE` settings control different aspects of failure handling. `STRICT_MODE` determines whether validation failures prevent builds from proceeding, while `FAIL_MODE` determines how component build failures affect the overall CI result.
+
+This allows users to choose how the workflow responds when one component fails while others may still succeed. The trade-off is additional configuration complexity and the need to maintain clear failure semantics without allowing required security checks to be bypassed.
+
+### 8. Runtime Extensibility and Responsibility Separation
+
+Each runtime handler manages the application-specific execution and checks required by its runtime. Shared CI responsibilities remain centralized, including dependency security management, image building, image inspection, container health verification, and delivery-result generation.
+
+This separation is intended to make future runtime support easier to implement without duplicating shared platform functionality or redesigning the entire workflow.
+
+The trade-off is that each additional runtime still requires a compatible handler and dependency-management implementation that integrates correctly with KUBAPP's existing execution and security boundaries.
+
+### 9. Cost-Conscious Engineering and Open-Source Tools
+
+Cost-effectiveness is a core design consideration throughout KUBAPP. The platform favors available free resources and open-source technologies wherever they can meet its functional, security, and operational requirements.
+
+For example, KUBAPP uses SOPS with age encryption for secret management instead of relying on a paid secrets-management service. This provides a cost-effective approach while keeping secret-management responsibilities within the platform.
+
+KUBAPP has been developed and tested under modest computing constraints, including a laptop with 16 GB of RAM, a four-core CPU, and no dedicated GPU or NVIDIA hardware. Its CI workflow also operates on GitHub Actions' free Linux runner resources without requiring specialized hardware.
+
+These constraints influence implementation choices, but they do not prevent KUBAPP from benefiting from more capable environments. Additional computing resources may improve certain operations, particularly local AI assessment. For example, running a larger Ollama model than `qwen2.5:3b` may improve assessment capabilities, depending on the model and available resources.
+
+The trade-off is that constrained infrastructure can limit computing capacity and shift more responsibility for configuration, maintenance, security, and troubleshooting onto KUBAPP. The goal is not simply to choose the cheapest option, but to build a practical platform that remains useful within modest resource limits and can benefit from additional capacity when available.
+
+### 10. CI Results and Downstream Integration
+
+KUBAPP CI writes successful build information to `gitops/state/final_ci_data.json`. Downstream workflows and platform sections consume this information, including application names, application directories, and image references required for subsequent delivery and deployment operations.
+
+This defined output allows CI to focus on application validation, security checks, image building, and publication without taking ownership of downstream deployment responsibilities.
+
+The trade-off is that downstream stages depend on the result file's structure and accuracy, so its contents must remain consistent with their requirements.
+
+## CI Workflow
 
 ```text
 Application Source
-        │
-        ▼
-   docker/<app>_app/
-        │
-        ▼
- detect_runtime.py
-        │
-        ├── Discover application
-        ├── Detect runtime
-        └── Load component ci.yml
-        │
-        ▼
- dependency_abstractor.py
-        │
-        ├── Install dependencies
-        ├── Lint
-        ├── Security analysis
-        ├── Unit tests
-        ├── Build Docker image
-        ├── Validate image
-        ├── Authenticate to Docker Hub
-        ├── Push image
-        └── Start + health-check container
-        │
-        ▼
- gitops/state/final_ci_data.json
-        │
-        ▼
- Platform / GitOps stages
-```
-
-The important design principle is that **the CI system does not need to know the internal commands of every application**.
-
-The application provides its CI commands through its `ci.yml`, while the platform provides the execution and validation framework.
-
----
-
-# Directory Structure
-
-```text
-scripts/ci/
-├── app_builder.py
-├── command_policy.py
-├── command_policy.json
-├── container.py
-├── dependency_abstractor.py
-├── detect_runtime.py
-├── java_handler.py
-├── node_handler.py
-├── python_handler.py
-├── reuse.py
-└── variables.py
-```
-
-Application CI configuration lives with the application component:
-
-```text
-docker/
-└── example_app/
-    └── api/
-        ├── requirements.txt
-        ├── Dockerfile
-        ├── ci.yml
-        └── ...
-```
-
-This keeps application-specific CI configuration close to the application itself.
-
----
-
-# 1. Application Discovery
-
-`detect_runtime.py` is responsible for discovering valid applications.
-
-An application directory must:
-
-* exist under `docker/`
-* be a directory
-* end with `_app`
-
-Example:
-
-```text
-docker/
-├── payment_app/
-├── user_app/
-└── inventory_app/
-```
-
-The `_app` suffix provides the first boundary for determining what should be treated as an application.
-
----
-
-# 2. Runtime Detection
-
-Runtime detection is manifest-based.
-
-The current mappings are:
-
-| Manifest           | Runtime |
-| ------------------ | ------- |
-| `requirements.txt` | Python  |
-| `pyproject.toml`   | Python  |
-| `pom.xml`          | Java    |
-| `build.gradle`     | Java    |
-| `build.gradle.kts` | Java    |
-| `package.json`     | Node.js |
-| `go.mod`           | Golang  |
-
-The mapping is defined in:
-
-```text
-scripts/ci/variables.py
-```
-
-Runtime handlers currently exist for:
-
-```text
-python
-node
-java
-```
-
-Golang is recognized by the discovery layer but does not currently have a runtime handler.
-
-Therefore, detecting a Golang manifest does not automatically mean Golang CI execution is supported.
-
----
-
-# 3. Component CI Configuration
-
-Each application component can provide a `ci.yml`.
-
-Example:
-
-```yaml
-runtime: python
-
-ci_commands:
-  lint:
-    - python
-    - -m
-    - ruff
-    - check
-    - .
-
-  security:
-    - python
-    - -m
-    - pip_audit
-
-  test:
-    - python
-    - -m
-    - pytest
-
-extra_data:
-  healthcheck:
-    app_port: 8080
-    host_port: 8080
-    endpoints:
-      - /health
-    expected_status: 200
-```
-
-The CI system reads this configuration through:
-
-```text
-detect_runtime.py
-```
-
-The configuration is validated before being passed to the runtime handler.
-
-The configured runtime must match the runtime detected from the application's manifest.
-
-For example:
-
-```yaml
-runtime: python
-```
-
-cannot be used by an application whose manifest identifies it as Java.
-
-This prevents an application from declaring one runtime while actually being processed as another.
-
----
-
-# 4. Dependency Abstractor
-
-`dependency_abstractor.py` is the main CI orchestration layer.
-
-It coordinates the complete application build process.
-
-For each valid application component it:
-
-1. Detects the runtime.
-2. Loads CI configuration.
-3. Selects the runtime handler.
-4. Installs dependencies.
-5. Runs linting.
-6. Runs security analysis.
-7. Runs unit tests.
-8. Builds the Docker image.
-9. Tags the image.
-10. Validates the image.
-11. Authenticates to Docker Hub.
-12. Pushes the image.
-13. Starts the pushed image.
-14. Performs an application health check.
-15. Stops and removes the test container.
-16. Stores the resulting application data.
-
-This makes CI a complete **application delivery gate**.
-
----
-
-# 5. Runtime Handlers
-
-Each supported runtime has its own handler.
-
-```text
-PythonHandler
-NodeHandler
-JavaHandler
-```
-
-The handlers expose a common lifecycle:
-
-```text
-install_dependencies()
-        │
-        ▼
-lint()
-        │
-        ▼
-security_analysis()
-        │
-        ▼
-unit_tests()
-        │
-        ▼
-build_from_dockerfile()
-```
-
-This allows the orchestration layer to remain runtime-independent.
-
-The dependency abstractor does not need separate logic such as:
-
-```text
-if python ...
-if node ...
-if java ...
-```
-
-Instead it selects the appropriate handler:
-
-```python
-handler_class = get_runtime_handler(runtime)
-```
-
-and executes the common CI lifecycle.
-
----
-
-# 6. Python CI
-
-Python applications support:
-
-### Dependency installation
-
-`requirements.txt`:
-
-```text
-python -m pip install -r requirements.txt
-```
-
-`pyproject.toml`:
-
-```text
-python -m pip install .
-```
-
-### CI gates
-
-Python uses application-defined commands for:
-
-* linting
-* security analysis
-* unit tests
-
-The commands are obtained from `ci.yml`.
-
----
-
-# 7. Node.js CI
-
-Node.js applications use `package.json` for runtime detection.
-
-If `package-lock.json` exists, CI uses:
-
-```text
-npm ci
-```
-
-Otherwise:
-
-```text
-npm install
-```
-
-This allows lockfile-based builds to remain deterministic when a lockfile is available.
-
-Node.js CI also supports application-defined:
-
-* linting
-* security analysis
-* unit tests
-
-through `ci.yml`.
-
----
-
-# 8. Java CI
-
-Java applications are detected from:
-
-```text
-pom.xml
-build.gradle
-build.gradle.kts
-```
-
-Maven applications install dependencies using:
-
-```text
-mvn dependency:resolve
-```
-
-Gradle applications use:
-
-```text
-./gradlew dependencies
-```
-
-Java CI commands are supplied through `ci.yml`.
-
-The Java handler also supports security environment configuration for tools such as OWASP Dependency-Check.
-
-For example:
-
-```yaml
-ci_commands:
-  security_env:
-    - NVD_API_KEY
-```
-
-When `security_env` is configured, the required environment variable must exist before the security gate can run.
-
----
-
-# 9. Command Safety
-
-Application-provided CI commands are not executed blindly.
-
-Before a configured command is executed, it passes through:
-
-```text
-command_policy.py
-```
-
-The policy validates:
-
-* command structure
-* executable
-* blocked executables
-* shell operators
-* runtime-specific arguments
-* blocked file extensions
-
-The command must be represented as a list rather than an arbitrary shell string.
-
-Example:
-
-```python
-[
-    "python",
-    "-m",
-    "pytest"
-]
-```
-
-rather than:
-
-```text
-python -m pytest
-```
-
-This allows CI to execute commands through `subprocess` without invoking a shell.
-
-The safety policy is stored in:
-
-```text
-scripts/ci/command_policy.json
-```
-
-The runtime handlers call:
-
-```python
-ensure_command_is_safe(command, runtime)
-```
-
-before executing application-provided CI commands.
-
----
-
-# 10. Docker Image Build
-
-After the application quality gates pass, the runtime handler builds the Docker image from the application's Dockerfile.
-
-The image name uses the application name and the current Git commit:
-
-```text
-<app-name>:<commit-id>
-```
-
-The commit identifier provides traceability between:
-
-```text
-Git commit
-      │
-      ▼
-Docker image
-      │
-      ▼
-Deployment
-```
-
-The image is then tagged for Docker Hub using a timestamp:
-
-```text
-<docker-user>/<image>-<timestamp>
-```
-
-This gives pushed images a unique timestamp-based identity.
-
----
-
-# 11. Docker Image Validation
-
-Before pushing, the generated image is validated using Docker:
-
-```text
-docker image inspect
-```
-
-The CI system verifies that the expected image exists locally.
-
-If validation fails, the application build fails.
-
----
-
-# 12. Docker Hub Authentication
-
-The CI system requires Docker Hub credentials when an image needs to be pushed.
-
-The expected environment variables are:
-
-```text
-DOCKER_USER
-DOCKER_PASS
-```
-
-Authentication is performed using:
-
-```text
-docker login --username <user> --password-stdin
-```
-
-The password is provided through standard input rather than being placed directly in the command arguments.
-
----
-
-# 13. Push
-
-After authentication, the image is pushed to Docker Hub.
-
-A failed push causes the application build to fail.
-
-The resulting image reference is retained as part of the application's CI output.
-
----
-
-# 14. Runtime Container Validation
-
-A successful Docker build and push does not automatically mean that the application works.
-
-CI therefore starts the pushed image locally.
-
-Example:
-
-```text
-docker run -d \
-  --name <container> \
-  -p <host-port>:<container-port> \
-  <image>
-```
-
-The application is then tested through its configured HTTP health endpoint.
-
-Example:
-
-```yaml
-extra_data:
-  healthcheck:
-    app_port: 8080
-    host_port: 8080
-    endpoints:
-      - /health
-    expected_status: 200
-```
-
-CI repeatedly checks the endpoint.
-
-The health check:
-
-* uses HTTP
-* validates the expected status code
-* retries failed checks
-* waits between attempts
-* captures container logs when validation ultimately fails
-
-This provides a stronger gate than simply checking whether Docker successfully created the container.
-
----
-
-# 15. Container Cleanup
-
-The test container is cleaned up after the health check.
-
-The lifecycle is:
-
-```text
-Start
-  │
-  ▼
-Health Check
-  │
-  ├── Success ──────┐
-  │                 │
-  └── Failure ──────┤
-                    ▼
-               Stop Container
-                    │
-                    ▼
-               Remove Container
-```
-
-Cleanup is performed using a `finally` block so that the container is stopped and removed even when the health check fails.
-
----
-
-# 16. Parallel Application Builds
-
-Applications are processed concurrently using:
-
-```text
-ThreadPoolExecutor
-```
-
-The current maximum concurrency is:
-
-```text
-MAX_WORKERS = 4
-```
-
-Therefore up to four application builds can run simultaneously.
-
-This allows a platform containing multiple independent applications to reduce total CI execution time without creating unlimited local resource consumption.
-
----
-
-# 17. CI State
-
-After application processing, successful application information is stored in:
-
-```text
+        |
+        v
+      docker/
+        |
+        v
+ Application Discovery
+        |
+        v
+ Configuration Validation
+        |
+        v
+ Runtime-Specific Handling
+        |
+        v
+ Dependency Preparation
+ and Security Checks
+        |
+        v
+ AI-Assisted Assessment
+ and Controlled Execution
+        |
+        v
+ Application Checks
+ and Container Image Build
+        |
+        v
+ Image and Container
+ Health Verification
+        |
+        v
+ Image Publication
+        |
+        v
 gitops/state/final_ci_data.json
+        |
+        v
+ Downstream KUBAPP
+ Delivery / GitOps Stages
 ```
 
-The state contains:
+The exact execution path depends on the application's runtime and configuration. Required validation, security, and health checks must be satisfied for a component to progress through the normal publication workflow, subject to the configured failure-handling behavior.
 
-```json
-{
-  "env": "dev",
-  "apps": {},
-  "timestamp": "..."
-}
-```
+## Documentation
 
-Each application entry contains information such as:
+See [`COMPONENTS.md`](COMPONENTS.md) for an overview of CI components and their responsibilities. Additional documentation under [`docs/`](docs/) covers individual scripts, configuration inputs, execution behavior, dependencies, and failure handling.
 
-```text
-image
-path
-runtime
-extra CI data
-platform file
-secret file
-```
+## Continuous Improvement
 
-This state is intended to be consumed by downstream platform/GitOps stages.
-
-The important separation is:
-
-```text
-CI
- │
- └── Produces application delivery data
-              │
-              ▼
-       Platform Build
-              │
-              ▼
-          GitOps
-```
-
-CI does not directly perform the complete Kubernetes deployment process.
-
----
-
-# 18. Failure Behavior
-
-CI treats application failures independently while processing applications concurrently.
-
-If an application fails:
-
-```text
-❌ <application>: failed
-```
-
-the overall CI result becomes unsuccessful.
-
-After all submitted applications finish, CI reports whether:
-
-```text
-All applications completed successfully
-```
-
-or:
-
-```text
-One or more applications failed
-```
-
-The workflow exits with a non-zero status when one or more application builds fail.
-This prevents a partially successful CI run from being reported as completely successful.
-
----
-
-# 19. CI Responsibilities
-
-The CI layer is responsible for:
-
-```text
-Application discovery
-Runtime detection
-CI configuration loading
-Dependency installation
-Linting
-Security analysis
-Unit testing
-Docker image building
-Image validation
-Image publishing
-Container startup
-Application health verification
-CI state generation
-```
-
----
-
-# 20. Design Principle
-
-The CI system separates **application knowledge** from **platform execution**.
-
-The application tells KUBAPP:
-
-```text
-What runtime am I?
-What commands should CI execute?
-What environment data does CI need?
-How should my container be health-checked?
-```
-
-KUBAPP provides:
-
-```text
-Discovery
-Execution
-Command safety
-Docker lifecycle
-Concurrency
-Validation
-State generation
-```
-
-This allows new applications to be integrated without modifying the central CI orchestrator.
-The intended model is:
-
-```text
-              Application
-                   │
-             ci.yml + source
-                   │
-                   ▼
-        ┌─────────────────────┐
-        │    KUBAPP CI        │
-        │                     │
-        │ Discover            │
-        │ Detect              │
-        │ Validate            │
-        │ Build               │
-        │ Push                │
-        │ Health-check        │
-        └──────────┬──────────┘
-                   │
-                   ▼
-          final_ci_data.json
-                   │
-                   ▼
-          Platform / GitOps
-```
-
+KUBAPP CI is intended to evolve through practical improvements to its security controls, architecture, resource efficiency, developer experience, and execution workflow. Suggestions for better approaches are welcome, provided they strengthen the platform without introducing unnecessary complexity or compromising its core design priorities.

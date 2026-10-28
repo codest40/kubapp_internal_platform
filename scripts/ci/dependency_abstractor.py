@@ -11,7 +11,8 @@ from container import ContainerManager
 from detect_runtime import get_runtime_handler
 from validate import validate_apps
 from manage_env import prepare_component_environment
-from variables import CI_COMMANDS, EXTRA_MANIFESTS, MANIFESTS
+from check_podman_capability import log_podman_capability_assessment
+from variables import CI_COMMANDS, EXTRA_MANIFESTS, MANIFESTS, RUNTIME_IMAGES
 
 
 DOCKER_USER = os.getenv("DOCKER_USER")
@@ -105,11 +106,18 @@ def build_component(app_dir, component):
             raise RuntimeError(
                 f"Unsupported runtime for {app_name}: {runtime}"
             )
-
-        component_env = prepare_component_environment(
+        execution_image = RUNTIME_IMAGES.get(runtime)
+        if not execution_image:
+            raise RuntimeError(
+              f"No execution image configured for runtime: {runtime}"
+        )
+        component_environment = prepare_component_environment(
                 app_name=app_name,
+                component_dir=component_dir,
                 secret_file=component["secret_file"],
                 security_env=component["security_env"],
+                execution_image=execution_image,
+                runtime=runtime,
         )
 
         handler_class = get_runtime_handler(runtime)
@@ -130,7 +138,7 @@ def build_component(app_dir, component):
             extra_ci_commands=component["extra_ci_commands"],
             extra_ci_config=component["extra_ci_config"],
             security_env = component["security_env"],
-            env=component_env,
+            component_environment=component_environment,
         )
 
         print(
@@ -221,6 +229,7 @@ def build_component(app_dir, component):
 
 def start_app_build(classified_apps):
     signal = True
+    failed_apps = []
     tasks = [
         (app_dir, component)
         for app_dir, components in classified_apps.items()
@@ -236,6 +245,7 @@ def start_app_build(classified_apps):
         f"with a maximum of {MAX_WORKERS} concurrent workers"
     )
 
+    #MAX_WORKERS = len(tasks)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {
             executor.submit(build_component, app_dir, component): (
@@ -256,24 +266,33 @@ def start_app_build(classified_apps):
                     f"[{app_name}] Unexpected worker failure "
                     f"for root {app_dir}: {exc}"
                 )
-
+                failed_apps.append(app_name)
                 signal = False
                 continue
 
             if success:
                 ALL_APPS[app_name] = app_result
                 print(f"[{app_name}] Result: SUCCESS")
-
             else:
+                failed_apps.append(app_name)
                 signal = False
                 print(f"[{app_name}] Result: FAILED")
 
     successful_components = len(ALL_APPS)
+
     print(
         f"Component CI execution finished. "
         f"Successful component results recorded: "
         f"{successful_components}/{len(tasks)}"
     )
+
+    if failed_apps:
+        reuse.BIG_LINE("#")
+        print("Failed applications:")
+        for app_name in failed_apps:
+            print(f"  - {app_name}")
+        reuse.BIG_LINE("#")
+
     return signal
 
 
@@ -356,6 +375,7 @@ def main():
     ALL_APPS.clear()
 
     try:
+        log_podman_capability_assessment()
         validation_result = validate_apps()
         if not validation_gate(validation_result):
             return 1

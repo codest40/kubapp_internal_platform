@@ -1,5 +1,6 @@
 from pathlib import Path
-import sys
+from platform_decision import KUBAPP_DECISION
+from ai_analysis import analyze_data
 import reuse
 
 
@@ -26,7 +27,7 @@ class CIRunner:
 
             script_path = (app_root / script).resolve()
             try:
-                script_path.relative_to(app_root)
+                relative_script = script_path.relative_to(app_root)
             except ValueError as exc:
                 raise RuntimeError(
                     f"[{self.handler.app_name}] CI script must be inside "
@@ -39,11 +40,12 @@ class CIRunner:
                     f"{script_path}"
                 )
 
+            container_script = relative_script.as_posix()
             extension = script_path.suffix.lower()
             if extension == ".py":
-                command = [sys.executable, str(script_path)]
+                command = ["python", container_script]
             elif extension == ".sh":
-                command = ["bash", str(script_path)]
+                command = ["bash", container_script]
             else:
                 raise RuntimeError(
                     f"[{self.handler.app_name}] Unsupported CI script "
@@ -51,17 +53,38 @@ class CIRunner:
                     "Only .py and .sh scripts are supported."
                 )
 
-            reuse.run_command(
+            result = analyze_data({
+                "app_name": self.handler.app_name,
+                "artifact_type": "script",
+                "script_content": reuse.collect_content(
+                    script_path, allowed_root=app_root
+                ),
+                "component_dir": str(app_root),
+                "runtime": self.handler.runtime,
+            })
+
+            KUBAPP_DECISION(result)
+            reuse.run_component_command(
                 command,
+                component_environment=self.handler.component_environment,
                 cwd=app_root,
                 label=f"[{self.handler.app_name}] CI script: {script}",
-                env=self.handler.env,
             )
 
     def run(self):
         handler = self.handler
-        handler.install_dependencies()
+        execution_path = (
+            "developer CI script"
+            if self.use_script
+            else "default CI checks"
+        )
+        print(
+            f"[{handler.app_name}] Starting CI "
+            f"using {execution_path}.",
+            flush=True,
+        )
 
+        handler.install_dependencies()
         if self.use_script:
             self.run_scripts()
         else:
@@ -75,7 +98,12 @@ class CIRunner:
                 handler.runtime,
                 handler.app_name,
                 handler.app_dir,
-                env=handler.env,
+                component_environment=handler.component_environment,
             )
 
-        return handler.build_from_dockerfile()
+        result = handler.build_from_dockerfile()
+        print(
+            f"[{handler.app_name}] CI completed successfully.",
+            flush=True,
+        )
+        return result
