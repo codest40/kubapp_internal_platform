@@ -68,16 +68,15 @@ resource "aws_iam_policy" "app_pods_readonly" {
       },
 
       # S3 READ ONLY
-      {
-        Effect = "Allow"
+      #{
+      #  Effect = "Allow"
 
-        Action = [
-          "s3:GetObject",
-          "s3:ListBucket"
-        ]
-
-        Resource = "*"
-      }
+      #  Action = [
+      #    "s3:GetObject",
+      #    "s3:ListBucket"
+      #  ]
+      #  Resource = "*"
+      #}
     ]
   })
 

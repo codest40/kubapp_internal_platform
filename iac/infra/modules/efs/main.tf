@@ -12,6 +12,7 @@ resource "aws_security_group" "efs" {
   }
 
   egress {
+    description = "Outbound traffic within the VPC CIDR"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"

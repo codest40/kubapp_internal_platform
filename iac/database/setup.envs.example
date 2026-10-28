@@ -1,0 +1,74 @@
+# ============================================
+# KUBAPP DATABASE
+# ============================================
+
+# Deployment environment
+ENV="dev"
+
+# Database deployment mode
+# local = database lives in KUBAPP account
+# cross = database lives in separate database account
+DATABASE_MODE="local"
+
+
+# ============================================
+# AWS ACCOUNTS
+# ============================================
+
+# KUBAPP AWS account
+KUBAPP_ACCOUNT_ID="111111222222222233333333344444"
+
+# AWS account where the cross-account database
+# infrastructure will be provisioned
+DATABASE_ACCOUNT_ID="5555555666666777777888888999"
+
+
+# ============================================
+# AWS PROFILES
+# ============================================
+
+# AWS profile used when database resources
+# are provisioned in the KUBAPP account
+PROFILE_LOCAL=""
+
+# AWS profile used when database resources
+# are provisioned in the separate database account
+PROFILE_CROSS=""
+
+
+# ============================================
+# AWS REGION
+# ============================================
+
+REGION="us-east-1"
+
+### What each value means
+
+```text
+DATABASE_MODE
+    │
+    ├── local
+    │     └── STATE_ACCOUNT_ID = KUBAPP_ACCOUNT_ID
+    │
+    └── cross
+          └── STATE_ACCOUNT_ID = DATABASE_ACCOUNT_ID
+```
+
+The profiles follow the same selection:
+
+```text
+local  → PROFILE_LOCAL
+cross  → PROFILE_CROSS
+```
+
+And the state location is then derived automatically:
+
+```text
+local:
+kubapp-database-tf-state-4535627282881927364449448
+dev/database/tf-state
+
+cross:
+kubapp-database-tf-state-${DATABASE_ACCOUNT_ID}
+dev/database/tf-state
+

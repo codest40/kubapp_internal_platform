@@ -1,5 +1,5 @@
 locals {
-  secret_path = "${path.root}/../../gitops/secrets"
+  secret_path = "${path.root}/../../gitops/secret_mgt/secrets"
 }
 
 resource "null_resource" "apply_secrets" {

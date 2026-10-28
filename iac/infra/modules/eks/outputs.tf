@@ -30,3 +30,6 @@ output "admin_role_arn" {
   value = aws_eks_access_entry.admin_access
 }
 
+output "sys_monitor_rbac_group_name" {
+  value = one(aws_eks_access_entry.sys_monitor.kubernetes_groups)
+}

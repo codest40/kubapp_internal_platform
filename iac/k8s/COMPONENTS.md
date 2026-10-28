@@ -1,885 +1,787 @@
-# KUBAPP — Kubernetes Layer Components
+# KUBAPP — Kubernetes Components
 
 ## 1. Layer Responsibility
 
-The KUBAPP infrastructure is intentionally divided into two Terraform layers:
-The separation prevents the Kubernetes layer from recreating or managing AWS infrastructure that belongs to iac/infra/.
+`iac/k8s` is the Kubernetes platform/bootstrap layer of KUBAPP.
 
-```text
-iac/infra/
-        │
-        │ Creates AWS infrastructure
-        ▼
-┌─────────────────────────────┐
-│ VPC                         │
-│ Subnets                     │
-│ Security Groups             │
-│ IAM / IRSA                  │
-│ EKS                         │
-│ EFS                         │
-│ ACM                         │
-│ CloudWatch                  │
-└─────────────────────────────┘
-        │
-        │ Terraform remote state
-        ▼
-iac/k8s/
-        │
-        │ Configures Kubernetes
-        ▼
-┌─────────────────────────────┐
-│ Namespaces                  │
-│ CSI Drivers                 │
-│ Load Balancer Controller    │
-│ ExternalDNS                 │
-│ Argo CD                     │
-│ Fluent Bit                  │
-│ Prometheus                  │
-│ Grafana                     │
-│ Alertmanager                │
-└─────────────────────────────┘
-```
+It configures the Kubernetes resources and platform services required after the AWS infrastructure has been provisioned.
 
-The result is a Kubernetes cluster that is not merely provisioned, but **bootstrapped with the core services required to operate applications as a platform**.
+The layer is responsible for:
 
-## 2. Terraform Providers
+* Kubernetes namespaces
+* Kubernetes and Helm providers
+* Platform service accounts and IRSA
+* VPC CNI configuration
+* Security Groups for Pods
+* AWS Load Balancer Controller
+* ExternalDNS
+* Argo CD
+* Fluent Bit
+* Fargate logging
+* Prometheus
+* Grafana
+* Alertmanager
+* EFS CSI
+* EBS CSI
+* StorageClasses
+* Cluster readiness checks
+* Application/platform secrets
+
+The AWS infrastructure itself is created by `iac/infra`.
+
+---
+
+## 2. Providers
 
 The layer uses four Terraform providers:
 
-| Provider   | Purpose                                            |
-| ---------- | -------------------------------------------------- |
-| AWS        | Interacts with AWS resources such as EKS add-ons   |
-| Kubernetes | Creates and manages Kubernetes resources           |
-| Helm       | Installs Kubernetes applications using Helm charts |
-| Null       | Executes readiness and bootstrap commands          |
+* AWS
+* Kubernetes
+* Helm
+* Null
 
-The providers are pinned in `versions.tf` to make deployments reproducible.
+### AWS
 
-```text
-AWS
- │
- ├── EKS
- └── EKS Add-ons
+Used for EKS add-ons and reading infrastructure information.
 
-Kubernetes
- │
- ├── Namespaces
- ├── ServiceAccounts
- ├── ConfigMaps
- └── StorageClasses
+### Kubernetes
 
-Helm
- │
- ├── Argo CD
- ├── ExternalDNS
- ├── AWS Load Balancer Controller
- ├── Fluent Bit
- └── kube-prometheus-stack
+Used to create Kubernetes-native resources such as:
 
-Null
- │
- └── Readiness / bootstrap commands
-```
+* Namespaces
+* Service Accounts
+* ConfigMaps
+* StorageClasses
+* SecurityGroupPolicy resources
 
-## 3. Remote Terraform State
+### Helm
 
-The Kubernetes layer maintains its own Terraform state:
+Used to install and configure platform components:
 
-```text
-S3
-└── kubapp-tf-state
-    └── dev/
-        └── k8s/
-            └── terraform.tfstate
-```
+* AWS Load Balancer Controller
+* ExternalDNS
+* Argo CD
+* Fluent Bit
+* kube-prometheus-stack
 
-This is separate from the infrastructure state:
+### Null
 
-```text
-dev/infra/terraform.tfstate
-dev/k8s/terraform.tfstate
-```
+Used for local execution steps involved in cluster readiness and secret application.
 
-This separation allows the AWS infrastructure and Kubernetes configuration to have independent Terraform lifecycles.
+---
 
-For example:
+## 3. Terraform State
 
-```text
-terraform apply infra
-        │
-        ▼
-AWS infrastructure exists
-        │
-        ▼
-terraform apply k8s
-        │
-        ▼
-Kubernetes platform is configured
-```
+The Kubernetes layer has its own Terraform state.
+
+The backend is configured for the environment-specific Kubernetes state, while the exact backend values are supplied through the environment configuration.
+
+The Kubernetes layer is therefore managed independently from the AWS infrastructure state.
+
+---
 
 ## 4. Consuming Infrastructure State
 
-`local.tf` uses Terraform's `terraform_remote_state` data source to consume values produced by the infrastructure layer.
+The Kubernetes layer reads outputs from the `iac/infra` Terraform state through `terraform_remote_state`.
 
-```hcl
-data "terraform_remote_state" "infra" {
-  backend = "s3"
+It consumes infrastructure information such as:
 
-  config = {
-    bucket = "kubapp-tf-state"
-    key    = "${var.env}/infra/terraform.tfstate"
-    region = var.region
-  }
-}
-```
+* VPC ID
+* EKS cluster name
+* EKS endpoint
+* EKS CA certificate
+* AWS IAM role ARNs
+* EFS ID
+* CloudWatch log groups
+* Application Security Group IDs
+* EKS cluster Security Group ID
+* Workload configuration
 
-Examples of values consumed from the infrastructure layer include:
+The Kubernetes layer does not recreate these AWS resources. It consumes the outputs produced by the infrastructure layer.
 
-```text
-VPC ID
-EKS cluster name
-EKS endpoint
-EKS CA certificate
-EFS ID
-IRSA role ARNs
-CloudWatch log groups
-domain
-```
+---
 
-This is important because `k8s/` does not need to duplicate these values.
+## 5. Kubernetes Authentication
 
-For example:
+The Kubernetes provider connects directly to the EKS API endpoint.
+
+Authentication uses the AWS CLI:
 
 ```text
-local.cluster_name
-local.vpc_id
-local.efs_id
-local.lb_controller_role_arn
+aws eks get-token
 ```
-
-are derived from the infrastructure layer.
-
-## 5. Kubernetes Provider
-
-The Kubernetes provider connects Terraform to the EKS API:
-
-```hcl
-provider "kubernetes" {
-  host                   = local.cluster_endpoint
-  cluster_ca_certificate = base64decode(local.cluster_ca_cert)
-
-  exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
-    command     = "aws"
-
-    args = [
-      "eks",
-      "get-token",
-      "--cluster-name",
-      local.cluster_name
-    ]
-  }
-}
-```
-
-KUBAPP does not store a static Kubernetes authentication token.
-
-Instead, Terraform uses the AWS CLI to obtain an EKS authentication token.
-
-This keeps authentication tied to AWS IAM rather than storing Kubernetes credentials in the repository.
-
-## 6. Helm Provider
 
 The Helm provider uses the same EKS authentication mechanism.
 
-This allows Terraform to install Helm-based platform services directly into the cluster.
+No static Kubernetes authentication token is stored in Terraform configuration.
 
-The major Helm deployments are:
+---
 
-```text
-AWS Load Balancer Controller
-ExternalDNS
-Argo CD
-Fluent Bit
-kube-prometheus-stack
-```
+## 6. Namespaces
 
-Using Helm allows KUBAPP to manage these services declaratively while keeping their configuration inside Terraform.
+KUBAPP creates four namespace categories:
 
-## 7. Namespaces
+### Environment namespace
 
-`namespaces.tf` creates platform namespaces from a local map:
+The active environment namespace is created dynamically from:
 
 ```text
-argocd
-monitoring
-aws-observability
+var.env
 ```
-
-The namespace definitions also contain labels describing the workload.
 
 For example:
 
 ```text
-component
-workload
-environment
-project
-telemetry
+dev
 ```
 
-The namespace structure separates platform responsibilities:
+This is the application namespace.
+
+### Argo CD
 
 ```text
 argocd
-    → GitOps
-
-monitoring
-    → Metrics and alerting
-
-aws-observability
-    → AWS / Fargate logging
 ```
 
-Application namespaces can be added separately as the platform evolves.
+Used for GitOps control.
 
-## 8. Kubernetes Service Accounts and IRSA
+### Monitoring
 
-`sa.tf` creates Kubernetes service accounts for AWS-integrated components.
+```text
+monitoring
+```
 
-Examples:
+Used for metrics, Grafana, Prometheus, and Alertmanager.
+
+### AWS Observability
+
+```text
+aws-observability
+```
+
+Used for AWS/Fargate logging configuration.
+
+Namespace labels are generated centrally from the KUBAPP Kubernetes labels and the namespace's component/workload classification.
+
+---
+
+## 7. Service Accounts and IRSA
+
+KUBAPP creates dedicated Kubernetes service accounts for AWS-integrated platform components.
+
+### AWS Load Balancer Controller
 
 ```text
 aws-load-balancer-controller
+```
+
+Uses the IAM role supplied by the infrastructure layer.
+
+### ExternalDNS
+
+```text
 external-dns
+```
+
+Uses its own IAM role supplied by the infrastructure layer.
+
+### Fluent Bit
+
+```text
 fluent-bit
 ```
 
-Each service account is associated with an IAM role:
+Uses its own IAM role supplied by the infrastructure layer.
 
-```hcl
-"eks.amazonaws.com/role-arn" = local.lb_controller_role_arn
-```
+These service accounts use IAM Roles for Service Accounts (IRSA), allowing Kubernetes workloads to access AWS APIs without embedding AWS credentials in Pods.
 
-This uses EKS IAM Roles for Service Accounts (IRSA).
+---
 
-The model is:
+## 8. VPC CNI and Pod Networking
 
-```text
-Kubernetes Pod
-      │
-      ▼
-ServiceAccount
-      │
-      ▼
-IRSA / OIDC
-      │
-      ▼
-AWS IAM Role
-      │
-      ▼
-AWS API
-```
+KUBAPP manages the Amazon VPC CNI as an EKS add-on.
 
-This avoids putting AWS access keys inside Kubernetes Secrets or application containers.
+The add-on is selected according to the current EKS Kubernetes version.
 
-The IAM roles themselves are created by the `iac/infra/modules/iam-irsa` layer.
-
-## 9. AWS Load Balancer Controller
-
-The AWS Load Balancer Controller is installed using Helm.
-
-Its purpose is to allow Kubernetes resources to create and manage AWS load balancers.
-
-The general flow is:
+The configuration explicitly enables:
 
 ```text
-Kubernetes Ingress
-        │
-        ▼
-AWS Load Balancer Controller
-        │
-        ▼
-AWS ALB
-        │
-        ▼
-Application Service
+ENABLE_POD_ENI=true
 ```
 
-This allows application networking to remain Kubernetes-native while AWS provides the underlying load-balancing infrastructure.
+This enables the networking required for assigning AWS Security Groups directly to Pods.
 
-The controller uses IRSA rather than static AWS credentials.
+This is the foundation for KUBAPP's Security Groups for Pods configuration.
 
-## 10. ExternalDNS
+---
 
-ExternalDNS automatically manages DNS records based on Kubernetes resources.
+## 9. Security Groups for Pods
 
-The flow is:
+KUBAPP separates AWS-level workload security from Kubernetes workload placement.
+
+The Security Groups themselves are created by the infrastructure layer.
+
+The Kubernetes layer consumes their IDs and applies them to Pods using the AWS VPC CNI `SecurityGroupPolicy` resource.
+
+The policies select Pods using **Pod labels**, not node labels.
+
+---
+
+## 10. EC2 Application Pod Security
+
+EC2-backed application Pods are selected using:
 
 ```text
-Kubernetes Ingress
-        │
-        ▼
-ExternalDNS
-        │
-        ▼
-Route 53
+compute=ec2
 ```
 
-For example, an application can expose:
+The matching Pods receive the:
 
 ```text
-app.rundailytest.online
+ec2_app
 ```
 
-without requiring a separate manual DNS change for every deployment.
+Security Group.
 
-ExternalDNS is restricted to the configured domain using:
+The EC2 worker nodes themselves retain their EKS/node-level Security Groups.
+
+The `ec2_app` Security Group is therefore a workload-level security boundary for application Pods, not a replacement for the node Security Group.
+
+---
+
+## 11. Fargate Application Pod Security
+
+Fargate application Pods are selected using:
 
 ```text
-domainFilters
+compute=fargate
 ```
 
-This reduces the scope of DNS permissions.
+The matching Pods receive two Security Groups:
 
-## 11. Argo CD
+* `fargate_app`
+* EKS cluster Security Group
 
-Argo CD provides the GitOps deployment layer.
+The cluster Security Group is included alongside the workload Security Group so that the Fargate Pods retain the required connectivity to the EKS control plane while using the custom workload Security Group.
 
-KUBAPP installs Argo CD using Helm.
+---
 
-The intended flow is:
+## 12. AWS Load Balancer Controller
+
+The AWS Load Balancer Controller is installed through Helm in:
 
 ```text
-Git Repository
-      │
-      ▼
-   Argo CD
-      │
-      ▼
-Kubernetes Cluster
-      │
-      ▼
-Applications
+kube-system
 ```
 
-Argo CD continuously compares the desired state stored in Git with the state running in Kubernetes.
+It manages AWS load-balancing resources for Kubernetes workloads.
 
-This moves application deployment away from manually executing:
+KUBAPP configures it with:
+
+* EKS cluster name
+* AWS region
+* VPC ID
+* Existing IAM-backed service account
+
+The controller is configured to install its required CRDs.
+
+KUBAPP uses the controller for its ALB-based application ingress architecture.
+
+---
+
+## 13. ExternalDNS
+
+ExternalDNS is installed in:
 
 ```text
-kubectl apply
+kube-system
 ```
 
-and toward a declarative GitOps workflow.
+It integrates Kubernetes ingress resources with AWS DNS.
 
-The Argo CD configuration also defines separate permissions for automation and administrative access.
+KUBAPP configures:
 
-## 12. Fluent Bit
+* AWS as the DNS provider
+* Ingress as the source
+* A domain filter for the KUBAPP domain
+* TXT ownership records
+* `upsert-only` policy
 
-Fluent Bit collects Kubernetes container logs.
+This allows Kubernetes ingress changes to create/update the required DNS records without allowing ExternalDNS to delete unrelated records.
 
-It runs as a DaemonSet on Linux EC2 nodes.
+---
 
-The general pipeline is:
+## 14. Argo CD
+
+Argo CD is installed in:
 
 ```text
-Container
-    │
-    ▼
-/var/log/containers
-    │
-    ▼
-Fluent Bit
-    │
-    ▼
-CloudWatch Logs
+argocd
 ```
 
-Fluent Bit enriches logs with Kubernetes metadata such as:
+using the Argo CD Helm chart.
 
-```text
-namespace
-pod
-container
-node
-application
-cluster
-environment
-```
+KUBAPP configures Argo CD for GitOps application deployment.
 
-This makes logs easier to search and correlate during troubleshooting.
+The Argo CD server runs as a ClusterIP service and is intended to be exposed through the KUBAPP ingress/TLS architecture.
 
-Fargate workloads use the AWS-supported logging configuration separately through `fargate_log.tf`.
+KUBAPP also configures automation and administrative Argo CD accounts/RBAC.
 
-## 13. Fargate Logging
+Terraform establishes the Argo CD platform component; Argo CD is then responsible for ongoing application GitOps reconciliation.
 
-Fargate workloads do not have the same host-level log access available on EC2 nodes.
+---
 
-Therefore, KUBAPP configures the special AWS logging mechanism through the:
+## 15. Fluent Bit
 
-```text
-aws-logging
-```
+Fluent Bit runs as a DaemonSet on Linux EC2 nodes.
 
-ConfigMap in the:
+It:
+
+* Reads container logs from `/var/log/containers`
+* Parses CRI-formatted logs
+* Enriches records with Kubernetes metadata
+* Adds KUBAPP cluster/environment information
+* Sends application logs to CloudWatch Logs
+
+The DaemonSet explicitly excludes Fargate nodes because Fargate uses its own logging mechanism.
+
+---
+
+## 16. Fargate Logging
+
+Fargate logging is configured through the AWS-supported `aws-logging` ConfigMap in:
 
 ```text
 aws-observability
 ```
 
-namespace.
+The configuration sends Fargate container logs to the designated CloudWatch log group.
 
-The flow becomes:
-
-```text
-Fargate Pod
-    │
-    ▼
-AWS Fargate Logging
-    │
-    ▼
-CloudWatch Logs
-```
-
-This allows both EC2-backed and Fargate workloads to have centralized logging.
-
-## 14. Prometheus
-
-KUBAPP installs the `kube-prometheus-stack`.
-
-Prometheus provides metrics collection for the Kubernetes platform and workloads.
-
-The stack includes components such as:
+The current configuration uses:
 
 ```text
-Prometheus
-Node Exporter
-Alertmanager
-Grafana
+auto_create_group false
 ```
 
-Prometheus collects metrics from Kubernetes and applications that expose Prometheus-compatible metrics.
+Therefore the expected CloudWatch log group is provisioned outside this ConfigMap rather than being automatically created by the Fargate logging configuration.
 
-Examples include:
+Fargate logging and EC2-node Fluent Bit are therefore separate paths into CloudWatch.
+
+---
+
+## 17. Prometheus
+
+KUBAPP deploys the `kube-prometheus-stack` Helm chart in:
 
 ```text
-CPU usage
-Memory usage
-Node health
-Pod health
-Application metrics
-Kubernetes control-plane metrics
+monitoring
 ```
 
-## 15. Node Exporter
+Prometheus provides Kubernetes and application metrics collection.
 
-Node Exporter runs on EC2-backed Kubernetes nodes.
+The current configuration uses:
 
-It exposes operating-system-level metrics to Prometheus.
+* 7-day retention
+* 15 GB retention-size limit
+* Persistent storage
+* EBS `gp3`
+* 20 GiB volume
+* Linux node placement
 
-Examples:
+Prometheus is part of the platform observability layer.
 
-```text
-CPU
-Memory
-Disk
-Filesystem
-Network
-Load
-```
+---
 
-Fargate nodes are excluded because Fargate does not expose the same underlying host environment.
+## 18. Node Exporter
 
-## 16. Grafana
+Node Exporter is deployed as part of the Prometheus stack.
 
-Grafana provides the visualization layer for Prometheus metrics.
+It provides node-level metrics for the Linux EC2 workers.
 
-The architecture is:
+Fargate is excluded because Fargate does not expose a normal node environment for Node Exporter to monitor.
 
-```text
-Kubernetes / Applications
-          │
-          ▼
-      Prometheus
-          │
-          ▼
-        Grafana
-```
+---
 
-Grafana persistence is backed by the EFS storage class.
+## 19. Grafana
 
-This allows Grafana configuration and state to survive pod recreation.
+Grafana is deployed as part of the Prometheus stack.
 
-## 17. Alertmanager
+It provides the visualization layer for platform metrics.
 
-Alertmanager handles alerts generated by Prometheus.
+KUBAPP configures:
 
-The flow is:
+* ClusterIP service
+* Anonymous access disabled
+* Existing admin secret
+* Persistent storage
+* EFS-backed storage
+* `efs-sc` StorageClass
+* 10 GiB capacity
+* ReadWriteMany access
 
-```text
-Prometheus
-    │
-    │ Alert
-    ▼
-Alertmanager
-    │
-    ▼
-Notification
-```
+Grafana therefore keeps its persistent data outside the Pod filesystem.
 
-KUBAPP currently configures email notifications.
+---
 
-Alertmanager also provides alert grouping and repeat intervals to prevent excessive notification noise.
+## 20. Alertmanager
 
-## 18. Persistent Storage
+Alertmanager is enabled as part of the Prometheus stack.
 
-KUBAPP uses both EFS and EBS.
+The current configuration includes:
 
-```text
-EFS
-└── Shared / ReadWriteMany storage
+* 120-hour retention
+* Persistent storage
+* EFS-backed storage
+* 5 GiB capacity
+* Alert grouping by `alertname`
+* 30-second group wait
+* 5-minute group interval
+* 1-hour repeat interval
 
-EBS
-└── Block storage / ReadWriteOnce workloads
-```
+Email notifications are configured through SMTP.
 
-These are exposed to Kubernetes through CSI drivers.
+Resolved notifications are also enabled.
 
-## 19. EFS CSI Driver
+---
 
-The AWS EFS CSI driver allows Kubernetes workloads to use the EFS filesystem created by the infrastructure layer.
+## 21. Persistent Storage
 
-KUBAPP creates an EFS StorageClass:
+KUBAPP uses both EFS and EBS through their AWS EKS CSI add-ons.
+
+They serve different workload requirements.
+
+### EFS
+
+Used where shared or filesystem-oriented persistence is appropriate.
+
+### EBS
+
+Used where block storage is appropriate, such as Prometheus.
+
+---
+
+## 22. EFS CSI
+
+KUBAPP manages the AWS EFS CSI driver as an EKS add-on.
+
+The EFS StorageClass is:
 
 ```text
 efs-sc
 ```
 
-The flow is:
+It uses:
 
 ```text
-Pod
- │
- ▼
-PVC
- │
- ▼
-efs-sc
- │
- ▼
-EFS CSI Driver
- │
- ▼
-AWS EFS
+efs.csi.aws.com
 ```
 
-EFS is useful where multiple pods need access to shared storage.
+with dynamic provisioning through EFS Access Points:
 
-The StorageClass uses EFS Access Points for dynamic provisioning.
+```text
+provisioningMode = efs-ap
+```
 
-## 20. EBS CSI Driver
+The StorageClass uses:
 
-The AWS EBS CSI driver provides block storage for Kubernetes.
+* EFS filesystem supplied by infrastructure
+* Dynamic provisioning base path `/dynamic_provisioning`
+* `Retain` reclaim policy
+* Immediate binding
+* Volume expansion enabled
 
-KUBAPP creates a:
+The EFS IAM role is supplied by the infrastructure layer.
+
+---
+
+## 23. EBS CSI
+
+KUBAPP also manages the AWS EBS CSI driver as an EKS add-on.
+
+The StorageClass is:
 
 ```text
 gp3
 ```
 
-StorageClass.
-
-The flow is:
+It uses:
 
 ```text
-Pod
- │
- ▼
-PVC
- │
- ▼
-gp3 StorageClass
- │
- ▼
-EBS CSI Driver
- │
- ▼
-AWS EBS
+ebs.csi.aws.com
 ```
 
-EBS is appropriate for workloads that require block storage and typically use `ReadWriteOnce`.
+with:
 
-Prometheus uses this storage for its metrics data.
+* `gp3`
+* `ext4`
+* `WaitForFirstConsumer`
+* Volume expansion enabled
+* Not configured as the default StorageClass
 
-## 21. Why Both EFS and EBS?
+The EBS CSI IAM role is supplied by the infrastructure layer.
 
-They solve different storage problems.
+Prometheus uses this StorageClass for its persistent volume.
 
-| Storage | Best suited for                        |
-| ------- | -------------------------------------- |
-| EFS     | Shared filesystem access               |
-| EBS     | Block storage for individual workloads |
+---
 
-For example:
+## 24. Cluster Readiness
+
+KUBAPP does not treat EKS creation as the end of cluster provisioning.
+
+The Kubernetes layer performs readiness checks using AWS CLI, `kubectl`, and Terraform `null_resource` local-exec steps.
+
+The checks include:
+
+* Waiting for the EKS cluster to become active
+* Waiting for the EFS CSI controller and node components
+* Waiting for the AWS Load Balancer Controller deployment
+* Waiting for the Load Balancer Controller webhook endpoints
+* Waiting for Argo CD and monitoring components
+
+KUBAPP also creates a `cluster-readiness` ConfigMap in `kube-system`.
+
+The readiness state starts as:
 
 ```text
-Grafana
-    → EFS
-
-Prometheus
-    → EBS gp3
+initializing
 ```
 
-This allows each workload to use storage appropriate to its access pattern.
-
-## 22. Cluster Readiness
-
-`readiness.tf` handles dependencies that cannot always be represented purely through Terraform resource creation.
-
-For example:
+and is changed to:
 
 ```text
-EKS created
-    │
-    ▼
-Wait for cluster to become active
-    │
-    ▼
-EFS CSI ready
-    │
-    ▼
-Load Balancer Controller ready
-    │
-    ▼
-Argo CD / Monitoring ready
-    │
-    ▼
-Cluster marked READY
+ready
 ```
 
-Terraform's `depends_on` controls resource ordering, while `kubectl` and AWS CLI readiness checks verify that services are actually operational.
+after the required platform components are available.
 
-A readiness ConfigMap is used to expose the platform state:
+This provides an explicit Kubernetes-level readiness signal for the completed bootstrap process.
+
+---
+
+## 25. Central Configuration and Labels
+
+Common configuration is centralized in `local.tf`.
+
+This includes:
+
+* Cluster information
+* AWS resource IDs
+* IAM role ARNs
+* EFS information
+* CloudWatch log groups
+* Workload selectors
+* Environment
+* Domain
+* Common Kubernetes labels
+
+Labels identify information such as:
 
 ```text
-status = initializing
-```
-
-and eventually:
-
-```text
-status = ready
-```
-
-This provides a simple signal that the bootstrap process has completed.
-
-## 23. Local Configuration and Labels
-
-`local.tf` also centralizes common metadata.
-
-KUBAPP applies consistent labels such as:
-
-```text
+cluster_name
+resource-type
+env
 project
-environment
-cluster
-component
-workload
 plane
 runtime
-telemetry
+trace-id
 ```
 
-This allows resources to be identified consistently across:
+Monitoring and logging components extend the common labels with their own component and telemetry information.
+
+---
+
+## 26. Environment Configuration
+
+The Kubernetes layer accepts an environment variable through:
 
 ```text
-Kubernetes
-CloudWatch
-AWS
-Prometheus
-Logs
+var.env
 ```
 
-For example:
+Supported values are:
 
 ```text
-plane = k8s
-component = monitoring
-telemetry = metrics
+dev
+staging
+prod
 ```
 
-This becomes useful when filtering resources or troubleshooting the platform.
-
-## 24. Environment Configuration
-
-Environment-specific values are kept under:
+Environment-specific Terraform values are maintained under:
 
 ```text
 envs/
-├── dev/
-│   ├── backend.hcl
-│   └── k8s.tfvars
-└── prod/
-    └── backend.hcl
 ```
 
-The same Terraform configuration can therefore be used for multiple environments.
+The environment determines the active application namespace and the corresponding infrastructure state consumed by the Kubernetes layer.
 
-The environment determines values such as:
+---
+
+## 27. Secrets
+
+KUBAPP keeps application/platform secret configuration separate from ordinary Kubernetes resource definitions.
+
+The Kubernetes layer invokes:
 
 ```text
-cluster identity
-domain
-region
-alert configuration
-Terraform state location
+scripts/gitops/apply_secrets.py
 ```
 
-The goal is to avoid creating separate Terraform codebases for development and production.
-
-## 25. Secrets
-
-Sensitive values such as alerting credentials are not stored as plaintext Terraform variables in the repository.
-
-The intended workflow is:
+to apply the secret configuration from:
 
 ```text
-Encrypted configuration
-        │
-        ▼
-Authorized deployment workflow
-        │
-        ▼
-Terraform
-        │
-        ▼
-Kubernetes / AWS
+gitops/secrets
 ```
 
-SOPS/age is used in the KUBAPP configuration in root to protect sensitive environment configuration.
+Terraform tracks changes to the secret files and reruns the application step when those files change.
 
-## 26. Dependency Order
+Encrypted secret configuration is maintained through the KUBAPP secrets workflow rather than storing ordinary secret values directly in Kubernetes Terraform resources.
 
-The major dependency chain is:
+---
+
+## 28. Dependency and Bootstrap Model
+
+The Kubernetes layer has dependencies between infrastructure, AWS add-ons, Kubernetes resources, and Helm components.
+
+The general model is:
+
+```text
+AWS Infrastructure
+        │
+        ▼
+Terraform Remote State
+        │
+        ▼
+EKS Authentication
+        │
+        ├── VPC CNI / Pod ENI
+        ├── EFS CSI
+        └── EBS CSI
+        │
+        ▼
+Namespaces + Service Accounts
+        │
+        ├── SecurityGroupPolicy
+        ├── StorageClasses
+        └── Platform configuration
+        │
+        ▼
+Helm Platform Components
+        │
+        ├── AWS Load Balancer Controller
+        ├── ExternalDNS
+        ├── Argo CD
+        ├── Fluent Bit
+        └── kube-prometheus-stack
+        │
+        ▼
+Readiness Checks
+        │
+        ▼
+Cluster Ready
+        │
+        ▼
+Argo CD GitOps
+        │
+        ▼
+Applications
+```
+
+Terraform establishes the platform foundation. Argo CD then handles ongoing application reconciliation.
+
+---
+
+## 29. Platform vs Application Responsibility
+
+KUBAPP separates platform provisioning from application deployment.
+
+### Terraform / `iac/k8s`
+
+Responsible for:
+
+* Kubernetes platform configuration
+* Namespaces
+* AWS integrations
+* Networking configuration
+* SecurityGroupPolicy
+* Storage
+* Logging
+* Monitoring
+* Argo CD
+* Cluster readiness
+
+### Argo CD
+
+Responsible for:
+
+* Application GitOps
+* Application manifests
+* Application deployment
+* Continuous reconciliation
+
+This keeps the Kubernetes platform bootstrap separate from the application's ongoing deployment lifecycle.
+
+---
+
+## 30. Overall Technical Flow
+
+The current KUBAPP Kubernetes flow is:
 
 ```text
 iac/infra
-    │
-    ├── VPC
-    ├── IAM / IRSA
-    ├── EKS
-    ├── EFS
-    └── Logging
-         │
-         ▼
-     iac/k8s
-         │
-         ├── Kubernetes connection
-         ├── Namespaces
-         ├── Service Accounts
-         ├── CSI Drivers
-         ├── Load Balancer Controller
-         ├── ExternalDNS
-         ├── Fluent Bit
-         ├── Argo CD
-         └── Monitoring Stack
-```
-
-The explicit dependencies and readiness checks reduce failures caused by attempting to configure Kubernetes components before the EKS control plane or required AWS integrations are ready.
-
-## 27. Why Terraform Manages These Components
-
-KUBAPP uses Terraform for this bootstrap layer because the platform itself should be reproducible.
-Instead of manually installing:
-
-```text
-helm install ...
-kubectl apply ...
-```
-
-the platform can be recreated from code.
-
-This provides:
-
-* Reproducibility
-* Version control
-* Environment consistency
-* Dependency management
-* Automated provisioning
-* Easier recovery
-
-Terraform is primarily responsible for **platform bootstrap** here.
-Argo CD then becomes responsible for **ongoing application GitOps deployment**.
-
-## 28. Platform vs Application Responsibility
-
-A key design boundary in KUBAPP is:
-
-```text
-Terraform
-    │
-    └── Platform foundation
-         ├── EKS
-         ├── Networking
-         ├── Storage integration
-         ├── IAM
-         ├── Logging
-         ├── Monitoring
-         └── Platform controllers
-
+   │
+   │ AWS infrastructure + IAM + networking
+   ▼
+Terraform Remote State
+   │
+   ▼
+iac/k8s
+   │
+   ├── EKS authentication
+   ├── VPC CNI + Pod ENI
+   ├── namespaces
+   ├── service accounts / IRSA
+   ├── Pod Security Groups
+   ├── CSI drivers + StorageClasses
+   ├── AWS Load Balancer Controller
+   ├── ExternalDNS
+   ├── Fluent Bit
+   ├── Fargate logging
+   ├── Prometheus / Grafana / Alertmanager
+   └── Argo CD
+   │
+   ▼
+Cluster readiness = ready
+   │
+   ▼
 Argo CD
-    │
-    └── Application workloads
-         ├── Services
-         ├── Deployments
-         ├── Ingress
-         ├── Configuration
-         └── Application lifecycle
+   │
+   ▼
+KUBAPP applications
 ```
 
-This prevents Terraform from becoming the primary application deployment mechanism.
+The Kubernetes layer therefore establishes the **operational platform** on which KUBAPP applications run.
 
-## 29. Overall Technical Flow
-
-The complete KUBAPP flow is:
-
-```text
-Terraform Boot
-     │
-     ▼
-S3 + Terraform State Locking
-     │
-     ▼
-Terraform Infrastructure
-     │
-     ├── VPC
-     ├── IAM
-     ├── EKS
-     ├── EFS
-     ├── ACM
-     └── CloudWatch
-     │
-     ▼
-Terraform Kubernetes Layer
-     │
-     ├── Kubernetes namespaces
-     ├── CSI drivers
-     ├── AWS Load Balancer Controller
-     ├── ExternalDNS
-     ├── Fluent Bit
-     ├── Argo CD
-     └── Prometheus / Grafana / Alertmanager
-     │
-     ▼
-GitOps Application Layer
-     │
-     ▼
-KUBAPP Applications
-```
+---
 
 ## Summary
 
-The `k8s/` layer is the **Kubernetes platform bootstrap layer** of KUBAPP.
-It takes the AWS infrastructure created by `iac/infra/` and turns the EKS cluster into a platform-ready environment with networking, DNS, storage, logging, monitoring, and GitOps capabilities.
-Application workloads are then managed through the GitOps application layer.
+`iac/k8s` is the Kubernetes platform layer of KUBAPP.
+
+It consumes AWS infrastructure outputs rather than recreating the infrastructure, configures EKS networking and Pod-level Security Groups, establishes persistent storage, installs the platform's ingress, DNS, logging, monitoring, and GitOps components, and verifies that the resulting cluster is operational.
+
+The resulting separation is:
+
+```text
+iac/infra
+    ↓
+AWS foundation
+    ↓
+iac/k8s
+    ↓
+Kubernetes platform
+    ↓
+Argo CD
+    ↓
+Applications
+```
+

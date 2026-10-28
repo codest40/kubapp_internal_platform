@@ -25,11 +25,11 @@ variable "to_port_fargate_app" {
   type = number
 }
 
-variable "from_port_cache_app" {
+variable "from_port_db_access" {
   type = number
 }
 
-variable "to_port_cache_app" {
+variable "to_port_db_access" {
   type = number
 }
 variable "custom_sg_definitions" {

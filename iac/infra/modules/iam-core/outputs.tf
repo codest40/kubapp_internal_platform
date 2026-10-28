@@ -27,5 +27,13 @@ output "sys_monitor_instance_profile_name" {
 }
 
 output "sys_monitor_eks_cross_account_role" {
-  value = aws_iam_role.sys_monitor_cross_account_role.arn
+  value = try(aws_iam_role.sys_monitor_cross_account_role[0].arn, null)
+}
+
+output "sys_monitor_terraform_execution_role" {
+  value = aws_iam_role.sys_monitor_terraform.name
+}
+
+output "database_account_terraform_role" {
+  value = try(aws_iam_role.db_cross_account_role[0].arn, null)
 }

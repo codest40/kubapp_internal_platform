@@ -1,6 +1,6 @@
 resource "aws_iam_policy" "github_actions" {
   name        = "${var.github_actions_role_name}-policy"
-  description = "Permissions for KUBAPP GitHub Actions Terraform provisioning"
+  description = "Permissions for KUBAPP Database GitHub Actions Terraform provisioning"
 
   policy = jsonencode({
     Version = "2012-10-17"

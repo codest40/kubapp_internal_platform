@@ -16,3 +16,10 @@ output "nat_public_ip" {
     az => eip.public_ip
   }
 }
+
+output "private_route_table_ids" {
+  value = [
+    for az in var.azs : aws_route_table.private[az].id
+  ]
+}
+

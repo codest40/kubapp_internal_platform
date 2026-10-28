@@ -11,7 +11,7 @@ if [[ -z "$SECRET_FILE" || ! -f "$SECRET_FILE" ]]; then
     ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   fi
 
-  SECRET_FILE="$ROOT/gitops/secrets/grafana-secret.yaml"
+  SECRET_FILE="$ROOT/gitops/secret_mgt/secrets/grafana-secret.yaml"
   if [[ ! -f "$SECRET_FILE" ]]; then
     echo "❌ Secret file not found: $SECRET_FILE"
     exit 1

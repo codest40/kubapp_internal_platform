@@ -19,20 +19,34 @@ variable "region" {
   type        = string
 }
 
-variable "access_iam_arn" {
-  type      = string
-  sensitive = true
+variable "admin_github" {
+  type = string
 }
 
-
-variable "admin_arn" {
-  type      = string
-  sensitive = true
+variable "admin_kubapp" {
+  type = string
 }
 
-variable "account_id" {
-  type      = string
-  sensitive = true
+variable "admin_visitor" {
+  type = string
+}
+
+variable "admin_sys_monitor" {
+  type = string
+}
+
+variable "database_role" {
+  type = string
+}
+
+variable "cross_account_ids" {
+  type = map(string)
+  #default = null
+}
+
+variable "enable_db_local_account" {
+  type    = bool
+  default = true
 }
 
 variable "kubernetes_v" {
@@ -58,3 +72,16 @@ variable "log_groups" {
   }))
 }
 
+variable "sys_monitor_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "db_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "db_kubapp_reciever_role" {
+  type = string
+}

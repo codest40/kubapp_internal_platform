@@ -12,13 +12,13 @@ locals {
             from_port   = 80
             to_port     = 80
             protocol    = "tcp"
-            cidr_blocks = ["0.0.0.0/0"]
+            cidr_blocks = [var.vpc_cidr]
           },
           {
             from_port   = 443
             to_port     = 443
             protocol    = "tcp"
-            cidr_blocks = ["0.0.0.0/0"]
+            cidr_blocks = [var.vpc_cidr]
           }
         ]
 
@@ -33,8 +33,8 @@ locals {
       }
 
       ec2_app = {
-        description = "EC2 transaction app"
-        workload    = "backend"
+        description = "For EKS EC2 Node apps"
+        workload    = "ec2 nodes"
 
         ingress = [
           {
@@ -56,8 +56,8 @@ locals {
       }
 
       fargate_app = {
-        description = "Serverless user-facing workload app"
-        workload    = "frontend/user"
+        description = "For EKS Fargate workload apps"
+        workload    = "Fargaet"
 
         ingress = [
           {
@@ -78,14 +78,14 @@ locals {
         ]
       }
 
-      app_cache = {
-        description = "Cache service"
-        workload    = "cache"
+      db_access = {
+        description = "Db access Boundary service"
+        workload    = "security"
 
         ingress = [
           {
-            from_port  = var.from_port_cache_app
-            to_port    = var.to_port_cache_app
+            from_port  = var.from_port_db_access
+            to_port    = var.to_port_db_access
             protocol   = "tcp"
             source_sgs = ["ec2_app", "fargate_app"]
           }

@@ -2,17 +2,30 @@ variable "cluster_name" {
   type = string
 }
 
-variable "access_iam_arn" {
+variable "github_iam_arn" {
   type = string
 }
 
-variable "admin_arn" {
+variable "admin_iam_arn" {
   type = string
+}
+
+variable "sys_monitor_ec2_role_arn" {
+  description = "ARN used by the sys_monitor EC2 instance (same account)"
+  type        = string
 }
 
 variable "sys_monitor_eks_cross_account_role_arn" {
-  description = "IAM role ARN used by the sys_monitor EC2 instance"
+  description = "ARN used by the sys_monitor EC2 instance (cross account)"
   type        = string
+}
+
+variable "sys_monitor_rbac_group_name" {
+  type = string
+}
+
+variable "enable_cross_account" {
+  type = bool
 }
 
 variable "kubernetes_version" {
@@ -25,10 +38,6 @@ variable "vpc_id" {
 
 variable "private_subnet_ids" {
   type = list(string)
-}
-
-variable "sg_ids" {
-  type = map(string)
 }
 
 variable "tags" {
@@ -82,24 +91,8 @@ variable "fargate_role_arn" {
 }
 
 variable "fargate_workloads" {
-  type = map(object({
-    role   = string
-    labels = optional(map(string), {})
-  }))
-
-  default = {
-    dev = {
-      role = "applications"
-      labels = {
-        compute = "fargate"
-      }
-    }
-
-    prod = {
-      role = "applications"
-      labels = {
-        compute = "fargate"
-      }
-    }
-  }
+  type = object({
+    compute = string
+    env     = string
+  })
 }

@@ -18,6 +18,17 @@ resource "aws_vpc" "main" {
   )
 }
 
+resource "aws_default_security_group" "main" {
+  vpc_id  = aws_vpc.main.id
+  ingress = []
+  egress  = []
+  tags = merge(var.tags, {
+    Name          = "${var.name}-default-sg"
+    resource-type = "security-group"
+    sg-scope      = "default"
+  })
+}
+
 resource "aws_iam_role" "flow_logs" {
   name = "${var.name}-vpc-flow-logs-role"
 
@@ -96,7 +107,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnets[count.index]
   availability_zone       = var.azs[count.index]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
   tags = merge(var.tags, {
     Name          = "${var.name}-public-${count.index}"
     resource-type = "subnet"

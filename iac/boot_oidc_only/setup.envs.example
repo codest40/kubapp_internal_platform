@@ -1,0 +1,12 @@
+
+#terraform.tfvars
+profile                  = ""
+github_actions_role_name = ""
+
+github_repository_owner    = ""
+github_repository_name     = ""
+github_repository_owner_id = ""
+github_repository_id       = ""
+
+github_branches     = ["main"]
+github_environments = ["dev", "prod"]

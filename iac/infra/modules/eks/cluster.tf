@@ -6,13 +6,7 @@ resource "aws_eks_cluster" "this" {
   version = var.kubernetes_version
 
   vpc_config {
-    subnet_ids = var.private_subnet_ids
-
-    security_group_ids = [
-      var.sg_ids["ec2_app"],
-      var.sg_ids["fargate_app"]
-    ]
-
+    subnet_ids              = var.private_subnet_ids
     endpoint_private_access = true
     endpoint_public_access  = true
   }
@@ -39,10 +33,7 @@ resource "aws_eks_cluster" "this" {
   })
 }
 
-############################################
-# OIDC PROVIDER (REQUIRED FOR IRSA)
-############################################
-
+# OIDC PROVIDER
 data "tls_certificate" "eks" {
   url = aws_eks_cluster.this.identity[0].oidc[0].issuer
 }

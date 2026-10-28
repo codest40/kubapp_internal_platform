@@ -1,0 +1,25 @@
+resource "kubernetes_manifest" "fargate_db_access_sg_policy" {
+  manifest = {
+    apiVersion = "vpcresources.k8s.aws/v1beta1"
+    kind       = "SecurityGroupPolicy"
+
+    metadata = {
+      name      = "fargate-db-access-sg"
+      namespace = local.fargate_workloads.env
+    }
+
+    spec = {
+      podSelector = {
+        matchLabels = {
+          "db-access" = "true"
+        }
+      }
+
+      securityGroups = {
+        groupIds = [
+          local.db_access_sg_id
+        ]
+      }
+    }
+  }
+}

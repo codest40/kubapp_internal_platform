@@ -15,10 +15,7 @@ resource "aws_security_group" "sg" {
   })
 }
 
-############################
-# INGRESS (MULTI SOURCE FIX)
-############################
-
+# INGRESS
 locals {
   ingress_rules = flatten([
     for sg_name, sg in var.sg_definitions : [
@@ -70,10 +67,7 @@ resource "aws_security_group_rule" "ingress" {
   description = try(each.value.rule.description, null)
 }
 
-############################
 # EGRESS
-############################
-
 locals {
   egress_rules = flatten([
     for sg_name, sg in var.sg_definitions : [

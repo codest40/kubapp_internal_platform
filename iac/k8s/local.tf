@@ -22,6 +22,15 @@ locals {
   efs_id                 = data.terraform_remote_state.infra.outputs.efs_id
   ebs_csi_irsa_arn       = data.terraform_remote_state.infra.outputs.ebs_csi_irsa_arn
   app_logs               = data.terraform_remote_state.infra.outputs.log_group_names["app_logs"]
+  fargate_logs           = data.terraform_remote_state.infra.outputs.log_group_names["fargate_logs"]
+  fargate_app_sg_id      = data.terraform_remote_state.infra.outputs.fargate_app_security_group_id
+  fargate_workloads      = data.terraform_remote_state.infra.outputs.fargate_workloads
+  ec2_app_workloads      = data.terraform_remote_state.infra.outputs.ec2_app_workloads
+  ec2_app_sg_id          = data.terraform_remote_state.infra.outputs.ec2_app_security_group_id
+  cluster_sg_id          = data.terraform_remote_state.infra.outputs.cluster_security_group_id
+  db_access_sg_id        = data.terraform_remote_state.infra.outputs.db_access_security_group_id
+
+  sys_monitor_rbac_name = data.terraform_remote_state.infra.outputs.sys_monitor_rbac_group_name
 
   name_prefix          = "kubapp-${var.env}"
   alert_email          = var.alert_email
@@ -50,6 +59,14 @@ locals {
   })
 
   namespaces = {
+    (var.env) = {
+      component = "applications"
+      workload  = "container"
+      labels = {
+        Environment = var.env
+      }
+    }
+
     argocd = {
       component = "gitops"
       workload  = "control-plane"
@@ -76,15 +93,6 @@ locals {
         Environment       = var.env
       }
     }
-    #    user = {
-    #      component = "application"
-    #      workload  = "users"
-    #    }
-
-    #    admin = {
-    #      component = "application"
-    #      workload  = "admin"
-    #    }
   }
 }
 

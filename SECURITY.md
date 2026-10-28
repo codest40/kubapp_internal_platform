@@ -6,7 +6,7 @@ Security controls are applied progressively across source control, CI/CD, AWS,
 Terraform, secrets, container images, Kubernetes, GitOps, and production 
 operations, so security is continuously enforced from code and infrastructure changes through to runtime.
 
-The project follows:
+The platform follows:
 
 * least privilege
 * explicit authorization
@@ -74,7 +74,6 @@ authorization boundaries.
 ## Secrets
 
 KUBAPP does not store plaintext application secrets in Git.
-
 Application secrets use **SOPS + AGE** encryption.
 
 ```text
@@ -115,10 +114,14 @@ the secret.
 
 ## CI/CD Security
 
-GitHub Actions workflows explicitly declare required permissions.
+Command Execution and Trust Boundaries
+KUBAPP separates trusted platform operations from developer-controlled component commands through run_platform_command() and run_component_command(). Application-provided scripts and commands are validated against the platform's configuration and execution policies before running. Valid configuration does not make a command inherently trusted; component execution must remain separate from privileged platform operations.
 
-Typical permissions are limited to the operation being performed, with
-additional privileges such as:
+Component Execution Isolation
+KUBAPP uses Podman to execute component-controlled commands within a restricted environment. Controls include filesystem restrictions, privilege-escalation protection, configurable network isolation, CPU and memory limits, process limits, execution timeouts, and container cleanup. If the required isolation boundary cannot be established, execution must fail rather than fall back to unrestricted host execution.
+
+GitHub Actions workflows explicitly declare required permissions.
+Typical permissions are limited to the operation being performed, with additional privileges such as:
 
 ```text
 id-token: write
@@ -384,9 +387,8 @@ entire platform.
 
 ### CI/CD
 
-* [ ] Application contains required `Dockerfile` and `ci.yml`
 * [ ] Dependencies are checked
-* [ ] Security scans are enabled
+* [ ] AI analysis Security scans are enabled
 * [ ] Container images are scanned
 * [ ] Production changes are controlled
 * [ ] Build artifacts are traceable to source commits
