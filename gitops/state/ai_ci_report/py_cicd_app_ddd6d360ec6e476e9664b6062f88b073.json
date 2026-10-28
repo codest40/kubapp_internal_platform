@@ -1,0 +1,17 @@
+{
+  "assessment_id": "ddd6d360ec6e476e9664b6062f88b073",
+  "assessed_at": "2026-10-26T23:30:57.598516+00:00",
+  "app_name": "py_cicd_app",
+  "artifact_type": "dockerfile",
+  "ruleset_id": "kubapp-ci-dockerfile-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "The Dockerfile does not exhibit suspicious or potentially malicious behavior. It uses a trusted base image, installs dependencies securely, and exposes a port for the application to run. There are no RUN instructions that could execute unsafe commands, and the CMD instruction is well-defined without exposing sensitive information.",
+  "evidence": [
+    "Base image 'python:3.12-slim' is from a trusted source.",
+    "Dependencies are installed securely with --no-cache-dir.",
+    "COPY instructions are used to include necessary files without suspicious content.",
+    "No RUN instructions that could execute unsafe commands or download unverified content.",
+    "CMD instruction is well-defined and does not expose sensitive information."
+  ]
+}

@@ -1,40 +1,22 @@
 {
   "env": "dev",
   "apps": {
-    "node_order_app": {
-      "image": "paragon40/node_order_app:d0dedd76d7-2026-09-16-11-47-09",
-      "path": "docker/node_order_app",
-      "runtime": "node",
-      "extra_ci_data": {
-        "healthcheck": {
-          "app_port": 3000,
-          "host_port": 3000,
-          "endpoints": [
-            "/health"
-          ],
-          "expected_status": 200
-        }
-      },
-      "platform_file": null,
-      "secret_file": null
-    },
-    "py_cicd_app": {
-      "image": "paragon40/py_cicd_app:d0dedd76d7-2026-09-16-11-47-22",
-      "path": "docker/py_cicd_app",
+    "kubwatch_app": {
+      "image": "paragon40/kubwatch_app:517ebd1f62-2026-10-27-23-15-28",
+      "path": "docker/kubwatch_app",
       "runtime": "python",
       "extra_ci_data": {
         "healthcheck": {
-          "app_port": 8000,
-          "host_port": 8000,
+          "app_port": 8080,
+          "host_port": 8080,
           "endpoints": [
             "/health"
           ],
           "expected_status": 200
         }
       },
-      "platform_file": "/home/runner/work/paragon/paragon/docker/py_cicd_app/kubapp.yml",
-      "secret_file": null
+      "platform_file": "/home/runner/work/paragon/paragon/docker/kubwatch_app/kubapp.yml"
     }
   },
-  "timestamp": "2026-09-16-11-47-34"
+  "timestamp": "2026-10-27T23:15:42.286650+00:00"
 }

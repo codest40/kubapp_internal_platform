@@ -1,0 +1,17 @@
+{
+  "assessment_id": "4d04e5d385064600bdb102e6c48ea989",
+  "assessed_at": "2026-10-26T16:34:00.764160+00:00",
+  "app_name": "py_cicd_app",
+  "artifact_type": "command",
+  "ruleset_id": "kubapp-ci-command-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "The command is a static code analysis tool (ruff) being run within the component directory and does not exhibit suspicious behavior.",
+  "evidence": [
+    "The command is using a trusted Python module (ruff) for code checking.",
+    "The command is executed within the permitted component directory (/home/runner/work/paragon/paragon/docker/py_cicd_app).",
+    "No network access or external content downloading is involved.",
+    "No privilege escalation or security control bypass is observed.",
+    "No credential exposure is present in the command or its arguments."
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "assessment_id": "80047be7ba0f422c98f54532a2a7a374",
+  "assessed_at": "2026-10-27T09:08:06.044228+00:00",
+  "app_name": "kubwatch_app",
+  "artifact_type": "dockerfile",
+  "ruleset_id": "kubapp-ci-dockerfile-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "The Dockerfile does not contain suspicious or potentially malicious behavior. It uses a trusted base image, installs necessary packages, and sets up a non-privileged user for the CMD command.",
+  "evidence": [
+    "The Dockerfile uses a trusted base image 'python:3.12-slim'.",
+    "The RUN instruction upgrades pip and installs required packages from a trusted requirements file.",
+    "The CMD instruction runs a non-privileged user command.",
+    "The EXPOSE instruction is used to expose a port but does not contain any suspicious operations."
+  ]
+}

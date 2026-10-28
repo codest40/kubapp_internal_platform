@@ -1,0 +1,18 @@
+{
+  "assessment_id": "763f3c0540f942d5b2872d3e13f9b851",
+  "assessed_at": "2026-10-26T23:33:08.917385+00:00",
+  "app_name": "typescript_app",
+  "artifact_type": "dockerfile",
+  "ruleset_id": "kubapp-ci-dockerfile-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "The Dockerfile follows best practices for multi-stage builds and does not exhibit suspicious behavior. It uses a slim base image, installs dependencies only as needed, and runs the application as a non-root user.",
+  "evidence": [
+    "The Dockerfile uses a multi-stage build approach, which is a recommended practice for reducing the image size and attack surface.",
+    "The build stage uses 'node:22-bookworm-slim' which is a minimal image, reducing the potential for vulnerabilities.",
+    "RUN commands do not execute scripts or download unverified content.",
+    "COPY commands are used to include only necessary files, and the build context is limited to the specified directories.",
+    "The production stage runs the application as the 'node' user, which is appropriate for a non-root runtime user.",
+    "The CMD instruction is set to run the application in a secure manner without exposing sensitive information."
+  ]
+}

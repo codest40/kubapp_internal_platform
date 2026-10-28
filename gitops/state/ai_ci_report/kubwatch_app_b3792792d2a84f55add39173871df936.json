@@ -1,0 +1,19 @@
+{
+  "assessment_id": "b3792792d2a84f55add39173871df936",
+  "assessed_at": "2026-10-26T23:27:11.753003+00:00",
+  "app_name": "kubwatch_app",
+  "artifact_type": "module",
+  "ruleset_id": "kubapp-ci-module-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "No security concerns were identified from the available evidence.",
+  "evidence": [
+    "All dependencies are recognized and widely used in the Python ecosystem.",
+    "Dependencies are declared with specific versions and constraints, ensuring compatibility and reducing the risk of unexpected version changes.",
+    "No suspicious installation hooks, build scripts, or post-install actions are present.",
+    "No dependencies request excessive privileges or access sensitive files.",
+    "The declared application purpose aligns with the dependencies used.",
+    "No known vulnerabilities are present based on the available information.",
+    "Dependencies are sourced from official package registries and verified upstream sources."
+  ]
+}

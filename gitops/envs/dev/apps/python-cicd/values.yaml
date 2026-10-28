@@ -11,7 +11,7 @@ serviceMonitor:
 replicaCount: 2
 image:
   repository: paragon40/py_cicd_app
-  tag: 79ecd1d6d6-2026-09-16-10-38-41
+  tag: 03b9de8d92-2026-10-16-14-12-55
   pullPolicy: Always
 service:
   type: ClusterIP
@@ -59,7 +59,7 @@ hpa:
   memory: 70
 meta:
   staticFingerprint: 2a0f77290cb52fb4a241c71c8b5c6ce973f95393a379e2c2983f831efd0126ba
-  generatedAt: 2026-09-16T11:48:46Z
+  generatedAt: 2026-10-16T14:17:50Z
   source: build-pipeline
 storage:
   volumes:
@@ -68,10 +68,5 @@ storage:
   volumeMounts:
     - name: edgepaas-vol
       mountPath: /tmp
-nodeSelector:
-  compute: ec2
-tolerations:
-  - key: compute
-    operator: Equal
-    value: ec2
-    effect: NoSchedule
+labels:
+  compute: fargate

@@ -1,8 +1,8 @@
-appName: node-order-app
+appName: kubwatch
 namespace: dev
 serviceAccount:
   create: true
-  name: node-order-app-sa
+  name: kubwatch-sa
   roleArn: arn:aws:iam::259183055744:role/kubapp-dev-app-pods-role
 serviceMonitor:
   enabled: false
@@ -10,13 +10,13 @@ serviceMonitor:
   interval: 30s
 replicaCount: 2
 image:
-  repository: paragon40/node_order_app
-  tag: 79ecd1d6d6-2026-09-16-10-38-28
+  repository: paragon40/kubwatch_app
+  tag: 03b9de8d92-2026-10-16-14-13-31
   pullPolicy: Always
 service:
   type: ClusterIP
   port: 80
-  targetPort: 3000
+  targetPort: 8080
 resources:
   requests:
     cpu: 100m
@@ -32,7 +32,7 @@ securityContext:
       type: RuntimeDefault
   container:
     runAsNonRoot: true
-    runAsUser: 10000
+    runAsUser: 10006
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:
@@ -41,14 +41,14 @@ securityContext:
 probes:
   readiness:
     httpGet:
-      path: /health
-      port: 3000
+      path: /health/
+      port: 8080
     initialDelaySeconds: 5
     periodSeconds: 10
   liveness:
     httpGet:
-      path: /health
-      port: 3000
+      path: /health/
+      port: 8080
     initialDelaySeconds: 10
     periodSeconds: 15
 hpa:
@@ -58,8 +58,21 @@ hpa:
   cpu: 70
   memory: 70
 meta:
-  staticFingerprint: e242e5b5f0c9c672fd2175e1b951e276bdede1ea61b6512db5568d9ce5840954
-  generatedAt: 2026-09-16T11:48:45Z
+  staticFingerprint: 50645e15ae6fcca224f5ab876f1061091650a309495c4b48d193a5527ab78ef3
+  generatedAt: 2026-10-16T14:17:50Z
   source: build-pipeline
+storage:
+  volumes:
+    - name: kubwatch-vol
+      emptyDir: {}
+  volumeMounts:
+    - name: kubwatch-vol
+      mountPath: /tmp
+secret:
+  enabled: true
+  name: kubwatch-secrets
+db:
+  enabled: true
+  secretName: kubwatch-db-secrets
 labels:
   compute: fargate

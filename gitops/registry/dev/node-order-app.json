@@ -2,10 +2,11 @@
   "service": "node-order-app",
   "type": "App",
   "runtime": "node",
-  "computeType": "fargate",
+  "computeType": "ec2",
+  "dbAccess": true,
   "context": "docker/node_order_app",
   "image": "paragon40/node_order_app",
-  "tag": "fadb7bd7f9-2026-09-16-10-54-23",
+  "tag": "9c596331f8-2026-10-25-22-10-15",
   "registry": "docker.io",
   "namespace": "dev",
   "env": "dev",
@@ -22,5 +23,6 @@
   "mount_path": "/tmp",
   "NO_VARS": true,
   "NO_SECRETS": true,
-  "CREATED_AT": "2026-09-16_11-47-47"
+  "secret_file": "",
+  "CREATED_AT": "2026-10-25_22-18-50"
 }

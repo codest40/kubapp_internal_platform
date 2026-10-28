@@ -1,0 +1,19 @@
+{
+  "assessment_id": "c44b332b9ef54d1db6783f6e0ede41be",
+  "assessed_at": "2026-10-26T23:33:52.118386+00:00",
+  "app_name": "node_order_app",
+  "artifact_type": "dockerfile",
+  "ruleset_id": "kubapp-ci-dockerfile-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "The Dockerfile does not contain suspicious or potentially malicious behavior. It uses a trusted base image, installs production dependencies, and sets a non-root user for the entrypoint.",
+  "evidence": [
+    "The Dockerfile uses a trusted base image 'node:20-bookworm-slim'.",
+    "The RUN instruction 'npm ci --omit=dev' installs production dependencies only.",
+    "The COPY instructions are used to copy necessary files and do not include sensitive files.",
+    "The EXPOSE instruction is used to expose the correct port.",
+    "The ENV instruction sets the environment to production.",
+    "The ENTRYPOINT instruction uses a script that is marked executable.",
+    "The Dockerfile does not contain any RUN instructions that could execute unverified remote content or destructive operations."
+  ]
+}

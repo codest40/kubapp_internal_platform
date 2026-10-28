@@ -1,0 +1,17 @@
+{
+  "assessment_id": "206053fcacae4c39afaaf5f923f5680d",
+  "assessed_at": "2026-10-26T23:32:20.265863+00:00",
+  "app_name": "kubwatch_app",
+  "artifact_type": "script",
+  "ruleset_id": "kubapp-ci-script-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "The script does not exhibit suspicious behavior. It runs predefined CI steps using tools already prepared by KUBAPP, and it does not perform any unauthorized filesystem or network operations, nor does it attempt to modify the CI environment or escape the permitted execution boundary.",
+  "evidence": [
+    "The script uses subprocess.run to execute commands within the component directory, which is expected and permitted.",
+    "The script does not download or execute remote content.",
+    "The script does not modify environment variables or the filesystem in a way that could be considered malicious.",
+    "The script does not attempt to obtain unnecessary privileges or bypass KUBAPP security controls.",
+    "The script does not contain any shell invocation or dynamic command construction that could pose a risk."
+  ]
+}

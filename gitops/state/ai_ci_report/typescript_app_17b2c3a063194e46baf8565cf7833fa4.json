@@ -1,0 +1,25 @@
+{
+  "assessment_id": "17b2c3a063194e46baf8565cf7833fa4",
+  "assessed_at": "2026-10-26T23:28:58.024532+00:00",
+  "app_name": "typescript_app",
+  "artifact_type": "module",
+  "ruleset_id": "kubapp-ci-module-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "No security concerns were identified based on the available evidence.",
+  "evidence": [
+    "The 'express' package is widely used and established, with a declared version of '^5.1.0'.",
+    "The 'eslint' and 'typescript-eslint' packages are commonly used for linting and type checking, with versions '^9.0.0' and '^8.0.0' respectively.",
+    "The 'typescript' package is the official TypeScript compiler, with a version '^5.8.0'.",
+    "The 'typescript-eslint' package is the official TypeScript ESLint plugin, with a version '^8.0.0'.",
+    "The 'globals' package is a type definition for global variables, with a version '^16.0.0'.",
+    "The 'eslint' and '@eslint/js' packages are from the official ESLint organization, with versions '^9.0.0' and '^9.0.0' respectively.",
+    "The 'typescript' and '@types/express' packages are from the official TypeScript and DefinitelyTyped organizations, with versions '^5.8.0' and '^5.0.0' respectively.",
+    "The 'typescript' and 'typescript-eslint' packages are declared in the 'dependencies' section, indicating they are necessary for the application.",
+    "The 'eslint', '@eslint/js', '@types/express', '@types/node', 'globals', 'typescript', and 'typescript-eslint' packages are declared in the 'devDependencies' section, indicating they are for development purposes only.",
+    "The 'express' package is compatible with the specified runtime 'node'.",
+    "The package manifests and lockfiles do not indicate any suspicious dependencies or unexpected version changes.",
+    "No known vulnerabilities were identified for the declared dependencies.",
+    "The dependencies do not appear to request excessive privileges or access sensitive files."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "assessment_id": "e437a3d91626416785ebb16f4d951290",
+  "assessed_at": "2026-10-26T23:29:51.895042+00:00",
+  "app_name": "node_order_app",
+  "artifact_type": "module",
+  "ruleset_id": "kubapp-ci-module-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "No security concerns were identified based on the available evidence.",
+  "evidence": [
+    "The dependencies 'express' and 'pg' are widely used and established in their respective ecosystems.",
+    "The 'eslint' devDependency is a well-known linter and is commonly used in Node.js projects.",
+    "The package names match the expected names for their respective ecosystems.",
+    "No suspicious naming or typosquatting was observed.",
+    "The package versions are pinned, indicating intentional version constraints.",
+    "The scripts are simple and do not contain any suspicious or executable code.",
+    "The artifact does not request excessive privileges or access sensitive files.",
+    "No known vulnerabilities were identified for the specified versions of the dependencies.",
+    "The dependencies appear necessary for the declared application purpose."
+  ]
+}

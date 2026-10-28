@@ -1,22 +1,22 @@
-appName: admin
+appName: node-db-order-app
 namespace: dev
 serviceAccount:
   create: true
-  name: admin-sa
-  roleArn: arn:aws:iam::532918215760:role/kubapp-dev-app-pods-role
+  name: node-db-order-app-sa
+  roleArn: arn:aws:iam::259183055744:role/kubapp-dev-app-pods-role
 serviceMonitor:
   enabled: false
   path: /metrics
   interval: 30s
 replicaCount: 2
 image:
-  repository: paragon40/admin_app
-  tag: bbf7883ba408305cf8ce5e7b5aaa994961fadfa9-1780923205
+  repository: paragon40/node_db_order_app
+  tag: 03b9de8d92-2026-10-16-14-12-44
   pullPolicy: Always
 service:
   type: ClusterIP
   port: 80
-  targetPort: 4000
+  targetPort: 3000
 resources:
   requests:
     cpu: 100m
@@ -32,7 +32,7 @@ securityContext:
       type: RuntimeDefault
   container:
     runAsNonRoot: true
-    runAsUser: 10003
+    runAsUser: 10000
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:
@@ -42,13 +42,13 @@ probes:
   readiness:
     httpGet:
       path: /health
-      port: 4000
+      port: 3000
     initialDelaySeconds: 5
     periodSeconds: 10
   liveness:
     httpGet:
-      path: /live
-      port: 4000
+      path: /health
+      port: 3000
     initialDelaySeconds: 10
     periodSeconds: 15
 hpa:
@@ -58,16 +58,12 @@ hpa:
   cpu: 70
   memory: 70
 meta:
-  staticFingerprint: be9cdf8b48982e22e4b67e6b6345e115a9ffde654c29143eaf57dff2b5007ecb
-  generatedAt: 2026-06-11T11:44:21Z
+  staticFingerprint: 4d376c60cf63a391da2eae4e540b1bd78c536dc5d7ffeaca3d4b84415761399b
+  generatedAt: 2026-10-16T14:17:47Z
   source: build-pipeline
-storage:
-  volumes:
-    - name: admin
-      emptyDir: {}
-  volumeMounts:
-    - name: admin
-      mountPath: /data
+db:
+  enabled: true
+  secretName: node-db-order-app-db-secrets
 nodeSelector:
   compute: ec2
 tolerations:

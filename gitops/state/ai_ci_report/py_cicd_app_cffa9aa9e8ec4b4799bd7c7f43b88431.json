@@ -1,0 +1,16 @@
+{
+  "assessment_id": "cffa9aa9e8ec4b4799bd7c7f43b88431",
+  "assessed_at": "2026-10-26T23:26:30.569669+00:00",
+  "app_name": "py_cicd_app",
+  "artifact_type": "module",
+  "ruleset_id": "kubapp-ci-module-security",
+  "ruleset_version": "0.1.0",
+  "decision": 0,
+  "reason": "All dependencies are recognized and widely used packages in the Python ecosystem. No suspicious naming or versioning issues were identified. The dependencies are compatible with the specified Python runtime. No known vulnerabilities are present in the current versions of the dependencies. The dependencies do not request excessive privileges or expose sensitive information.",
+  "evidence": [
+    "Dependencies are recognized: fastapi, uvicorn, pydantic, pytest, httpx, ruff, bandit",
+    "Dependencies are compatible with Python >=3.12",
+    "No known vulnerabilities for the current versions of the dependencies",
+    "Dependencies do not request excessive privileges or expose sensitive information"
+  ]
+}

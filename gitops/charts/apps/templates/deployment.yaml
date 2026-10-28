@@ -69,10 +69,17 @@ spec:
               value: "{{ $value }}"
             {{- end }}
 
-          {{- if and .Values.secret .Values.secret.enabled }}
+          {{- if or (and .Values.secret .Values.secret.enabled) (and .Values.db .Values.db.enabled) }}
           envFrom:
+            {{- if and .Values.secret .Values.secret.enabled }}
             - secretRef:
                 name: {{ .Values.secret.name | quote }}
+            {{- end }}
+
+            {{- if and .Values.db .Values.db.enabled }}
+            - secretRef:
+                name: {{ .Values.db.secretName | quote }}
+            {{- end }}
           {{- end }}
 
           resources:

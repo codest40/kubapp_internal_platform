@@ -2,10 +2,11 @@
   "service": "python-cicd",
   "type": "App",
   "runtime": "python",
-  "computeType": "ec2",
+  "computeType": "fargate",
+  "dbAccess": false,
   "context": "docker/py_cicd_app",
   "image": "paragon40/py_cicd_app",
-  "tag": "fadb7bd7f9-2026-09-16-10-54-37",
+  "tag": "9c596331f8-2026-10-25-22-11-34",
   "registry": "docker.io",
   "namespace": "dev",
   "env": "dev",
@@ -22,5 +23,6 @@
   "mount_path": "/tmp",
   "NO_VARS": false,
   "NO_SECRETS": true,
-  "CREATED_AT": "2026-09-16_11-47-47"
+  "secret_file": "",
+  "CREATED_AT": "2026-10-25_22-18-50"
 }

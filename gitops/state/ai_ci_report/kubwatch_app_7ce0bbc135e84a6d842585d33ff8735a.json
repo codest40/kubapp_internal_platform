@@ -1,0 +1,13 @@
+{
+  "assessment_id": "7ce0bbc135e84a6d842585d33ff8735a",
+  "assessed_at": "2026-10-27T10:06:52.529311+00:00",
+  "app_name": "kubwatch_app",
+  "artifact_type": "module",
+  "ruleset_id": "kubapp-ci-module-security",
+  "ruleset_version": "0.1.0",
+  "decision": 1,
+  "reason": "Identified dependency 'httpx2' presents a significant risk of typosquatting or package impersonation targeting the well-known 'httpx' library.",
+  "evidence": [
+    "The manifest specifies 'httpx2', which closely mimics the standard HTTP library 'httpx' commonly paired with FastAPI applications."
+  ]
+}
