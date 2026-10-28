@@ -1,4 +1,4 @@
-## 4. Repository Structure
+##  Repository Structure
 
 ```text
 kubapp/
