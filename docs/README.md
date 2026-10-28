@@ -1,4 +1,4 @@
-# ## Design Philosophy: Runtime-Agnostic Orchestration
+# CI Design Philosophy: Runtime-Agnostic Orchestration
 
 KUBAPP is designed to orchestrate application delivery without imposing a single application architecture, framework, or build convention.
 
