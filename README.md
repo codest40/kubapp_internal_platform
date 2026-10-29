@@ -15,7 +15,7 @@ Security, cost efficiency, and operational simplicity guide the platform's desig
 - Keeps platform operations maintainable, debuggable, and extensible.
 - Applies defined policies and execution boundaries to automated operations.
 
-## Documentation
+## Documentations
 
 - [Setup and Initialization](./SETUP.md)
 - [Platform Design Approach](docs/README.md)
