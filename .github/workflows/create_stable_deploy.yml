@@ -34,6 +34,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          token: ${{ secrets.KUBAPP_WORKFLOW_PAT }}
 
       - name: Validate commit
         id: validate
@@ -91,6 +92,9 @@ jobs:
         run: |
           set -euo pipefail
 
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           COMMIT="${{ steps.validate.outputs.commit }}"
           ENV="${{ steps.env.outputs.env }}"
 
@@ -122,11 +126,11 @@ jobs:
           TAG: ${{ steps.stable_tag.outputs.tag }}
         run: |
           set -euo pipefail
-
-          mkdir -p gitops/state
+          DEPLOY_DIR="gitops/state/stable_deploys"
+          mkdir -p "$DEPLOY_DIR"
 
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          FILE="gitops/state/stable-deploy-${ENV}-${TIMESTAMP}.json"
+          FILE="$DEPLOY_DIR/stable-deploy-${ENV}-${TIMESTAMP}.json"
           jq -n \
             --arg env "$ENV" \
             --arg commit "$COMMIT" \
@@ -150,9 +154,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          FILE="${{ env.FILE }}"
+          FILE=("${{ env.FILE }}")
           bash scripts/extra/commit.sh \
-            "$FILE" \
+            "${FILE[@]}" \
             "[STABLE] Promote ${{ steps.validate.outputs.commit }} as stable"
           echo "✅ Stable deployment recorded"
 

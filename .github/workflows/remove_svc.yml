@@ -82,8 +82,9 @@ jobs:
       - name: Commit changes
         run: |
           set -euo pipefail
+          DIRS=("gitops/ingress")
           MSG="[REMOVE-SVC]: removed services from ingress (${ENV})"
-          bash scripts/extra/commit.sh "gitops/ingress" "$MSG"
+          bash scripts/extra/commit.sh "${DIRS[@]}" "$MSG"
 
       - name: Done
         run: |

@@ -200,9 +200,9 @@ jobs:
 
 
       - name: commit Ingress changes
-        run: bash scripts/extra/commit.sh "$DIR" "From Validate_ingress Workflow"
+        run: bash scripts/extra/commit.sh "${DIRS[@]}" "Commit From Validate_ingress Workflow"
         env:
-          DIR: "gitops/ingress"
+          DIRS: ("gitops/ingress")
 
       - name: Show final ingress
         run: |

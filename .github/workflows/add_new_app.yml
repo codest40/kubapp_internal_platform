@@ -368,7 +368,7 @@ jobs:
         run: |
           set -euo pipefail
           ENV="${{ env.ENV }}"
-          DIR="gitops"
+          DIRS=("gitops")
           MSG="[ADD-NEW-APP] provision new application(s)"
-          bash scripts/extra/commit.sh "$DIR" "$MSG"
+          bash scripts/extra/commit.sh "${DIRS[@]}" "$MSG"
           echo "✅ New app provisioning committed successfully for $ENV"

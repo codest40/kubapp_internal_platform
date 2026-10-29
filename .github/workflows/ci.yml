@@ -1,22 +1,33 @@
 name: Activate Continuous Integration
 
 on:
-  #push: {}
+  # push: {}
   workflow_call:
     inputs:
       env:
         required: true
+        type: string
+      llm_provider:
+        description: LLM Source
+        required: false
+        default: inherit
         type: string
     secrets:
       DOCKER_USER:
         required: true
       DOCKER_PASS:
         required: true
+      AGE_PRIVATE_KEY:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      GOOGLE_API_KEY:
+        required: false
 
   workflow_dispatch:
     inputs:
       env:
-        description: Env mode
+        description: Environment mode
         required: false
         default: dev
         type: choice
@@ -24,78 +35,156 @@ on:
           - dev
           - prod
       mode:
-        description: Strict Validation Mode
+        description: Strict validation mode
         required: false
         default: true
         type: choice
         options:
-          - false
-          - true
+          - "false"
+          - "true"
       fail_mode:
-        description: Build failure Terminate
+        description: Terminate build on failure
         required: false
         default: true
         type: choice
         options:
-          - false
-          - true
+          - "false"
+          - "true"
+      llm_provider:
+        description: LLM provider
+        required: false
+        default: google
+        type: choice
+        options:
+          - inherit
+          - ollama
+          - openai
+          - google
 
 permissions:
+  id-token: write
   contents: write
 
 jobs:
   start_ci:
-    runs-on: ubuntu-latest
+    name: CI Workflow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
     env:
-        ENV: ${{ inputs.env || 'dev' }}
-        STRICT_MODE: ${{ inputs.mode || 'true' }}
-        FAIL_MODE: ${{ inputs.fail_mode || 'true' }}
+      ENV: ${{ inputs.env || 'dev' }}
+      STRICT_MODE: ${{ inputs.mode || 'true' }}
+      FAIL_MODE: ${{ inputs.fail_mode || 'true' }}
+      LLM_PROVIDER: ${{ inputs.llm_provider != 'inherit' && inputs.llm_provider || vars.LLM_PROVIDER || 'ollama' }}
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL || 'qwen2.5:7b' }}
+      OLLAMA_HOST: ${{ vars.OLLAMA_HOST || '127.0.0.1:11434' }}
+      OLLAMA_MODELS: ${{ github.workspace }}/.ollama/models
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || '' }}
+      GOOGLE_MODEL: ${{ vars.GOOGLE_MODEL || 'gemini-3.8-flash' }}
 
     steps:
-      - name: Source code checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Show this commit
-        run: |
-          echo "Commit ID: ${{ github.sha }}"
-
-      - name: Check Python
-        run: bash scripts/ci/check_python.sh
-
-      - name: Setup SOPS and Age Key
+      - name: Prepare Ollama cache key
+        id: ollama-cache-key
+        if: env.LLM_PROVIDER == 'ollama'
+        shell: bash
         run: |
           set -euo pipefail
-          curl -L -o sops https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+
+          MODEL="${LLM_MODEL:-${OLLAMA_MODEL}}"
+
+          MODEL_KEY=$(printf '%s' "$MODEL" |
+            tr '[:upper:]' '[:lower:]' |
+            sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')
+
+          if [[ -z "$MODEL_KEY" ]]; then
+            echo "Unable to generate an Ollama cache key."
+            exit 1
+          fi
+
+          echo "model-key=$MODEL_KEY" >> "$GITHUB_OUTPUT"
+          echo "Selected Ollama model: $MODEL"
+          echo "Cache key: ubuntu-ollama-${MODEL_KEY}-v1"
+
+      - name: Restore Ollama model cache
+        id: ollama-cache
+        if: env.LLM_PROVIDER == 'ollama'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.OLLAMA_MODELS }}
+          key: ubuntu-ollama-${{ steps.ollama-cache-key.outputs.model-key }}-v1
+          restore-keys: |
+            ubuntu-ollama-
+
+      - name: Check and Ensure Dependencies are Installed
+        run: |
+          set -euo pipefail
+          bash scripts/ci/check_python.sh
+          python -m pip install --upgrade pip
+          python -m pip install httpx PyYAML "mcp==2.3.0"
+
+      - name: Prepare selected LLM provider
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          echo "Selected LLM provider: $LLM_PROVIDER"
+          python scripts/ci/ai/setup_provider.py
+
+      - name: Setup SOPS and Age Key
+        env:
+          AGE_PRIVATE_KEY: ${{ secrets.AGE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -o sops \
+            https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
           chmod +x sops
           sudo mv sops /usr/local/bin/sops
-
           mkdir -p ~/.config/sops/age
-          echo "${{ secrets.AGE_PRIVATE_KEY }}" > ~/.config/sops/age/keys.txt
-          chmod 600 ~/.config/sops/age/keys.txt
+
+          if [ -n "${AGE_PRIVATE_KEY:-}" ]; then
+            printf '%s\n' "$AGE_PRIVATE_KEY" \
+              > ~/.config/sops/age/keys.txt
+            chmod 600 ~/.config/sops/age/keys.txt
+          fi
+
           test -s ~/.config/sops/age/keys.txt || {
-            echo "❌ AGE key missing"
+            echo "AGE key missing."
             exit 1
           }
 
       - name: Call Dependency Abstractor
-        run: python scripts/ci/dependency_abstractor.py
         env:
-            NVD_API_KEY: "${{ secrets.NVD_API_KEY }}"
-            DOCKER_USER: "${{ secrets.DOCKER_USER }}"
-            DOCKER_PASS: "${{ secrets.DOCKER_PASS }}"
-            STRICT_MODE: "${{ env.STRICT_MODE }}"
-            FAIL_MODE: "${{ env.FAIL_MODE }}"
-            ENV: "${{ env.ENV }}"
+          OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
+          GOOGLE_API_KEY: "${{ secrets.GOOGLE_API_KEY }}"
+          OPENAI_MODEL: "${{ env.OPENAI_MODEL }}"
+          GOOGLE_MODEL: "${{ env.GOOGLE_MODEL }}"
+          LLM_PROVIDER: "${{ env.LLM_PROVIDER }}"
+          OLLAMA_MODEL: "${{ env.OLLAMA_MODEL }}"
+          OLLAMA_HOST: "${{ env.OLLAMA_HOST }}"
+          OLLAMA_MODELS: "${{ env.OLLAMA_MODELS }}"
+          DOCKER_USER: "${{ secrets.DOCKER_USER }}"
+          DOCKER_PASS: "${{ secrets.DOCKER_PASS }}"
+          STRICT_MODE: "${{ env.STRICT_MODE }}"
+          FAIL_MODE: "${{ env.FAIL_MODE }}"
+          ENV: "${{ env.ENV }}"
+
+        run: |
+          set -euo pipefail
+          python scripts/ci/dependency_abstractor.py
 
       - name: Commit App Build + Push
         run: |
           set -euo pipefail
-          ENV="${{ env.ENV }}"
           echo "Current ENV: $ENV"
-          DIR1="docker"
-          DIR2="gitops"
+
+          DIRS=("docker" "gitops")
           MSG="[APP-BUILD-PUSH] Updated App Build + Push Registry from CI"
-          bash scripts/extra/commit.sh "$DIR1" "$DIR2" "$MSG"
+          bash scripts/extra/commit.sh "${DIRS[@]}" "$MSG"
 
       - name: Completion
         run: echo "Successfully completed CI workflow!"

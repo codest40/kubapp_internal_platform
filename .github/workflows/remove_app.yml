@@ -90,9 +90,9 @@ jobs:
       - name: Commit changes
         run: |
           set -euo pipefail
-
+          ARGS=("gitops/envs")
           MSG="[REMOVE-APP]: orphan cleanup in $ENV"
-          bash scripts/extra/commit.sh "gitops/envs" "$MSG"
+          bash scripts/extra/commit.sh "${ARGS[@]}" "$MSG"
 
       - name: Confirm Failure
         if: failure()

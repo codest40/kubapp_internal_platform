@@ -81,9 +81,9 @@ jobs:
       - name: Commit platform registry
         run: |
           set -euo pipefail
-          DIR="gitops"
+          DIRS=("gitops" "sys_monitor/backend/state")
           MSG="[PLATFORM-BUILD] Update platform registry from CI"
-          bash scripts/extra/commit.sh "$DIR" "$MSG"
+          bash scripts/extra/commit.sh "${DIRS[@]}" "$MSG"
 
       - name: Platform build complete
         run: echo "Platform registry build completed successfully"

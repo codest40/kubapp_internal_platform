@@ -90,6 +90,6 @@ jobs:
       - name: Commit changes
         run: |
           ENV="${{ env.ENV }}"
-          DIR="gitops/envs/$ENV"
+          DIRS=("gitops/envs/$ENV")
           MSG="[IMAGE UPDATER] Runtime Image Updating Workflow"
-          bash scripts/extra/commit.sh  "$DIR" "$MSG"
+          bash scripts/extra/commit.sh  "${DIRS[@]}" "$MSG"

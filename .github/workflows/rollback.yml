@@ -12,11 +12,6 @@ on:
           - dev
           - prod
 
-      tag:
-        description: "Stable deployment tag to rollback to"
-        required: true
-        type: string
-
       mode:
         description: "Rollback mode"
         required: true
@@ -32,84 +27,115 @@ on:
         required: true
         type: string
 
-      commit:
-        required: true
-        type: string
-
-      tag:
-        required: true
+      mode:
+        required: false
+        default: target
         type: string
 
 jobs:
   rollback:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.KUBAPP_WORKFLOW_PAT || github.token }}
 
-      - name: Rollback to stable deployment
+      - name: Find latest stable deployment and rollback
         env:
           ENV: ${{ inputs.env }}
-          COMMIT: ${{ inputs.commit }}
-          TAG: ${{ inputs.tag }}
+          MODE: ${{ inputs.mode || 'target' }}
         run: |
           set -euo pipefail
 
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           echo "======================================"
           echo "ROLLBACK"
           echo "======================================"
           echo "Environment: $ENV"
-          echo "Stable tag:  $TAG"
-          echo "Stable commit: $COMMIT"
+          echo "Mode:        $MODE"
           echo ""
+
+          if [[ "$ENV" != "dev" && "$ENV" != "prod" ]]; then
+            echo "❌ Invalid environment: $ENV"
+            exit 1
+          fi
+
+          if [[ "$MODE" != "target" && "$MODE" != "full" ]]; then
+            echo "❌ Invalid rollback mode: $MODE"
+            exit 1
+          fi
+
           git fetch origin main --tags
 
-          if ! git cat-file -e "${COMMIT}^{commit}" 2>/dev/null; then
-            echo "❌ Stable commit does not exist: $COMMIT"
+          # Select the latest stable tag for this environment.
+          TAG=$(git tag --list "stable-${ENV}-*" | sort -r | head -n 1)
+
+          if [[ -z "$TAG" ]]; then
+            echo "❌ No stable deployment tag found for environment: $ENV"
             exit 1
           fi
 
-          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "❌ Stable tag does not exist: $TAG"
+          COMMIT=$(git rev-list -n 1 "$TAG")
+
+          if [[ -z "$COMMIT" ]] || ! git cat-file -e "${COMMIT}^{commit}" 2>/dev/null; then
+            echo "❌ Stable tag does not point to a valid commit: $TAG"
             exit 1
           fi
 
-          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
-
-          if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
-            echo "❌ Stable tag does not point to supplied commit"
-            echo "Tag commit:      $TAG_COMMIT"
-            echo "Expected commit: $COMMIT"
-            exit 1
-          fi
-
-          echo "✅ Stable tag verified"
-          echo "Tag points to commit: $COMMIT"
+          echo "✅ Stable deployment found"
+          echo "Stable tag:    $TAG"
+          echo "Stable commit: $COMMIT"
           echo ""
 
-          MODE="${{ inputs.mode || 'target' }}"
+          git checkout -B main origin/main
 
           if [[ "$MODE" == "target" ]]; then
 
             echo "Applying TARGET rollback..."
-            echo "Restoring GitOps state from stable commit"
+            echo "Restoring GitOps files while preserving stable deployment records."
 
-            # Restore the complete GitOps state represented by
-            # the stable deployment commit.
+            BACKUP_DIR=$(mktemp -d)
+            STABLE_DEPLOYS="gitops/state/stable_deploys"
+
+            if [[ -d "$STABLE_DEPLOYS" ]]; then
+              cp -a "$STABLE_DEPLOYS" "$BACKUP_DIR/stable_deploys"
+              HAS_STABLE_DEPLOYS=true
+            else
+              HAS_STABLE_DEPLOYS=false
+            fi
+
+            # Restore GitOps state from the selected stable commit.
             git restore --source="$COMMIT" -- gitops
+
+            # Restore stable deployment records so the rollback
+            # cannot delete records created after the stable commit.
+            if [[ "$HAS_STABLE_DEPLOYS" == "true" ]]; then
+              mkdir -p "$(dirname "$STABLE_DEPLOYS")"
+              rm -rf "$STABLE_DEPLOYS"
+              cp -a "$BACKUP_DIR/stable_deploys" "$STABLE_DEPLOYS"
+            fi
+
+            rm -rf "$BACKUP_DIR"
+
             git add gitops
+
             if git diff --cached --quiet; then
-              echo "✅ Current GitOps state already matches stable commit"
+              echo "✅ GitOps state already matches the selected stable deployment."
+              echo "Stable deployment records remain preserved."
               exit 0
             fi
 
             git status --short
+            git diff --cached --stat
 
             git commit \
               -m "[ROLLBACK] Restore $ENV to stable $TAG"
@@ -117,26 +143,25 @@ jobs:
             git push origin HEAD:main
 
             echo ""
-            echo "✅ Target rollback applied successfully"
-            echo "Stable commit: $COMMIT"
+            echo "✅ Target rollback applied successfully."
+            echo "Environment:   $ENV"
             echo "Stable tag:    $TAG"
+            echo "Stable commit: $COMMIT"
+            echo "Stable deployment records preserved."
 
           elif [[ "$MODE" == "full" ]]; then
 
             echo "Applying FULL rollback..."
-            echo "WARNING: This rewrites main history"
+            echo "WARNING: This rewrites main history and may remove newer stable deployment records from the branch."
 
-            git fetch origin main
-            git checkout main
             git reset --hard "$COMMIT"
 
             git push origin main --force-with-lease
 
             echo ""
-            echo "✅ Full rollback completed"
+            echo "✅ Full rollback completed."
+            echo "Environment: $ENV"
+            echo "Stable tag:  $TAG"
             echo "Main now points to: $COMMIT"
 
-          else
-            echo "❌ Invalid rollback mode: $MODE"
-            exit 1
           fi
