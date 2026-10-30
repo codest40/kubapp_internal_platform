@@ -62,8 +62,7 @@ SysMonitor is organized around several layers:
 
 ## What SysMonitor Is Intended to Provide
 
-The purpose of SysMonitor is NOT simply to monitor application availability.
-It is intended to provide **awareness of the system itself**.
+The purpose of SysMonitor is to provide **awareness of the system itself**.
 
 For example:
 - Is the codebase changing unexpectedly?
