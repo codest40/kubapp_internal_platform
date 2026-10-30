@@ -59,7 +59,6 @@ SysMonitor is organized around several layers:
 5. **Docker Compose**
    - Connects the major SysMonitor services into a runnable local stack.
 
-6. **Future AI Analysis Implementation**
 
 ## What SysMonitor Is Intended to Provide
 
