@@ -12,3 +12,13 @@ Runtime agnosticism does not mean that every runtime or configuration is automat
 
 **KUBAPP standardizes the delivery interface and management, not the application itself.**
 
+## Secret Management: Cost-Conscious Design
+
+KUBAPP uses SOPS to encrypt sensitive configuration rather than relying on AWS Secrets Manager.
+
+This decision is driven primarily by cost. At the current stage of the platform, avoiding unnecessary recurring infrastructure costs is essential. Introducing a managed secrets service would add another cost-bearing dependency to the platform's operation and management.
+
+SOPS allows KUBAPP to encrypt sensitive configuration while retaining control over how encrypted secrets are stored, distributed, and used. This supports the platform's security requirements without introducing the additional service costs associated with AWS Secrets Manager.
+
+This is a deliberate trade-off based on KUBAPP's current priorities, not a claim that SOPS is universally preferable to a managed secrets service. As the platform evolves, its secret management approach can be reassessed against its security requirements, operational complexity, and cost constraints.
+
