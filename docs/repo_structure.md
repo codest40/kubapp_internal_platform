@@ -1,10 +1,14 @@
-##  Repository Structure
+## Repository Structure
 
 ```text
 kubapp/
 ├── .github/
 │   ├── workflows/              # CI/CD and platform automation workflows
 │   └── docs/                   # Workflow and operational documentation
+│
+├── docker/                     # Application onboarding and Config
+│   ├── README.md
+│   └── <applications>/
 │
 ├── docs/                       # Platform architecture and engineering documentation
 │
@@ -52,14 +56,14 @@ kubapp/
 │   └── docs/                   # Script documentation
 │
 ├── sys_monitor/
+│   ├── backend/                # Backend services and APIs
+│   ├── frontend/               # Frontend applications and interfaces
 │   ├── cloud/
 │   │   └── aws/                # AWS infrastructure for sys_monitor
 │   ├── codebase/               # Codebase discovery and analysis engine
 │   ├── exporters/              # GitHub and GitOps metric exporters
 │   ├── observability/          # Prometheus and Grafana configuration
 │   └── docs/                   # sys_monitor documentation
-│
-├── mcp/                        # MCP and AI integration
 │
 ├── account.name                # AWS account/environment identifier
 ├── .checkov.yaml               # Checkov security configuration
@@ -74,16 +78,3 @@ kubapp/
 ├── README.md                   # Main project documentation
 └── LICENCE.md                  # Project licence
 ```
-
-### Application Onboarding
-
-Applications are onboarded through the platform rather than being tightly coupled to the infrastructure layout.
-A dedicated application workspace is be provided for app services:
-
-```text
-docker/
-└── <application>/
-```
-
-Each application can then be discovered, validated, built, registered, and deployed through the KUBAPP platform workflows.
-The platform itself remains responsible for the underlying infrastructure, Kubernetes resources, GitOps reconciliation, observability, security, and recovery.

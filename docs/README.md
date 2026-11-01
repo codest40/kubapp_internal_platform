@@ -1,5 +1,16 @@
 # Design Choices
 
+## Platform Architecture: File-Based Orchestration
+
+KUBAPP is designed around a file-based interaction model. Most platform operations, workflow handoffs, and component interactions use files to exchange configuration, state, results, and execution data. Files serve as explicit boundaries between different stages of the platform rather than requiring every component to communicate directly through APIs, webhooks, or continuously running watchers.
+
+This decision is driven partly by cost. A more service-oriented architecture could introduce additional servers, API endpoints, webhook receivers, and event-processing components that need to remain available or be operated whenever communication is required. At KUBAPP's current stage, those additional resources and their associated operational costs are not always justified.
+
+The second consideration is operational simplicity. File-based interactions make inputs, outputs, and intermediate state easier to inspect, retain, reproduce, and troubleshoot. When a workflow fails, its files can provide evidence of what a component received, what it produced, and where processing stopped. This also reduces the number of independently running services and communication paths that must be maintained and secured.
+
+This does not mean APIs, webhooks, or event-driven mechanisms are inherently unsuitable. They become valuable when requirements such as real-time communication, immediate event delivery, or independently consumed services justify their additional complexity. KUBAPP can introduce those mechanisms where necessary without making them the default interaction model for every component.
+The goal is to keep the platform's internal workflows explicit, inspectable, and economical while preserving the flexibility to adopt more service-oriented communication when its operational value justifies the cost.
+
 ## CI: Runtime-Agnostic Orchestration
 
 KUBAPP is designed to orchestrate application delivery without imposing a single application architecture, framework, or build convention.
