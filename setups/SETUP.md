@@ -1,7 +1,7 @@
 # KubApp Setup
 
 KubApp requires a small amount of user-provided configuration before the
-project can initialize its AWS and GitHub infrastructure.
+platform can initialize its AWS and GitHub infrastructure.
 
 The setup process is:
 

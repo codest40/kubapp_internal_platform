@@ -45,6 +45,10 @@ kubapp/
 │   ├── k8s/                    # Kubernetes cluster configuration
 │   └── manifests/              # Kubernetes manifests and platform alerts
 │
+├── setups/                     # Setup guides
+│   ├── SETUP.md                # Platform setup guide
+│   ├── SOPS.md                 # Secret management guide
+│
 ├── scripts/
 │   ├── ci/                     # Application discovery, validation and build logic
 │   ├── cleanups/               # Platform and AWS cleanup operations
@@ -70,8 +74,6 @@ kubapp/
 ├── .sops.yaml                  # SOPS encryption configuration
 ├── .trivyignore                # Trivy vulnerability scan exclusions
 ├── SECURITY.md                 # Security guidance
-├── SETUP.md                    # Platform setup guide
-├── SOPS.md                     # Secret management guide
 ├── setup.sh                    # Initial platform setup
 ├── setup_functions.sh          # Setup helper functions
 ├── reuse.sh                    # Shared setup/reuse logic

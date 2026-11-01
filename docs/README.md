@@ -4,12 +4,9 @@
 
 KUBAPP is designed around a file-based interaction model. Most platform operations, workflow handoffs, and component interactions use files to exchange configuration, state, results, and execution data. Files serve as explicit boundaries between different stages of the platform rather than requiring every component to communicate directly through APIs, webhooks, or continuously running watchers.
 
-This decision is driven partly by cost. A more service-oriented architecture could introduce additional servers, API endpoints, webhook receivers, and event-processing components that need to remain available or be operated whenever communication is required. At KUBAPP's current stage, those additional resources and their associated operational costs are not always justified.
+The first consideration is operational simplicity. File-based interactions make inputs, outputs, and intermediate state easier to inspect, retain, reproduce, and troubleshoot. When a workflow fails, its files can provide evidence of what a component received, what it produced, and where processing stopped. This also reduces the number of independently running services and communication paths that must be maintained and secured.
 
-The second consideration is operational simplicity. File-based interactions make inputs, outputs, and intermediate state easier to inspect, retain, reproduce, and troubleshoot. When a workflow fails, its files can provide evidence of what a component received, what it produced, and where processing stopped. This also reduces the number of independently running services and communication paths that must be maintained and secured.
-
-This does not mean APIs, webhooks, or event-driven mechanisms are inherently unsuitable. They become valuable when requirements such as real-time communication, immediate event delivery, or independently consumed services justify their additional complexity. KUBAPP can introduce those mechanisms where necessary without making them the default interaction model for every component.
-The goal is to keep the platform's internal workflows explicit, inspectable, and economical while preserving the flexibility to adopt more service-oriented communication when its operational value justifies the cost.
+This second reasone is driven partly by cost. A more service-oriented architecture would introduce need for additional servers, API endpoints, webhook receivers, and event-driven processes components would need to remain available and continously operated whenever communication is required. At KUBAPP's current stage, those additional resources and their associated operational costs are not justified.
 
 ## CI: Runtime-Agnostic Orchestration
 
@@ -27,7 +24,7 @@ Runtime agnosticism does not mean that every runtime or configuration is automat
 
 ## Secret Management: Cost-Conscious Design
 
-KUBAPP uses SOPS to encrypt sensitive configuration rather than relying on AWS Secrets Manager.
+KUBAPP uses SOPS to encrypt sensitive configuration rather than relying on cloud-managed secret stores like AWS Secrets Manager.
 
 This decision is driven primarily by cost. At the current stage of the platform, avoiding unnecessary recurring infrastructure costs is essential. Introducing a managed secrets service would add another cost-bearing dependency to the platform's operation and management.
 

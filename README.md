@@ -5,7 +5,7 @@ Each major section of the platform has its own README.
 
 ## Core Principles
 
-Security, cost efficiency, and operational simplicity guide the platform's design.
+Security, Cost efficiency, and Operational adaptability guide the platform's design.
 
 ## What It Does
 
@@ -14,10 +14,11 @@ Security, cost efficiency, and operational simplicity guide the platform's desig
 - Provides monitoring and observability for operational visibility.
 - Keeps platform operations maintainable, debuggable, and extensible.
 - Applies defined policies and execution boundaries to automated operations.
+- Adapts its configurations to changing infrastructure constraints, resource availability, and operational limitations to ensure the intended result continues to be achieved.
 
 ## Documentations
 
-- [Setup and Initialization](./SETUP.md)
+- [Setup and Initialization](./setups/SETUP.md)
 - [Platform Design Approach](docs/README.md)
 - [Platform Outline](docs/outline.md)
 - [Repository Structure](docs/repo_structure.md)
