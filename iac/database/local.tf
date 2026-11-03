@@ -37,4 +37,8 @@ locals {
   deletion_protection       = false
   skip_final_snapshot       = true #false
   final_snapshot_identifier = "${local.project}-${local.env}-database-final"
+
+  # sys_monitor conn
+  sys_monitor_cross_mode_enabled  = var.sys_monitor_cross_mode_enabled
+  sys_monitor_cross_mode_vpc_cidr = "10.40.0.0/16"
 }

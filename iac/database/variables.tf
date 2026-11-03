@@ -77,3 +77,8 @@ variable "state_bucket" {
 variable "state_key" {
   type = string
 }
+
+variable "sys_monitor_cross_mode_enabled" {
+  type    = bool
+  default = false
+}

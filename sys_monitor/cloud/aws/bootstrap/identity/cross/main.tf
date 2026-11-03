@@ -49,10 +49,8 @@ resource "aws_iam_user_policy" "assume_sys_monitor_role" {
     Version = "2012-10-17"
 
     Statement = [{
-      Effect = "Allow"
-
-      Action = "sts:AssumeRole"
-
+      Effect   = "Allow"
+      Action   = "sts:AssumeRole"
       Resource = aws_iam_role.sys_monitor.arn
     }]
   })
@@ -81,6 +79,41 @@ resource "aws_iam_role_policy" "terraform_management" {
   })
 }
 
+
+#############################################
+# KUBAPP SYS_MONITOR STATE READER
+########################################3
+resource "aws_iam_role" "kubapp_reads_sys_monitor_state" {
+  name = "allow-kubapp-read-sys-monitor-state-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        AWS = "arn:aws:iam::${var.kubapp_account_id}:role/kubapp-reads-sys-monitor-state-role"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "kubapp_reads_sys_monitor_state" {
+  name = "read-sys-monitor-terraform-state"
+  role = aws_iam_role.kubapp_reads_sys_monitor_state.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadSysMonitorTerraformState"
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = "arn:aws:s3:::kubapp-sys-monitor-${var.account_id}/${var.env}/sys-monitor-runtime/tf-state"
+    }]
+  })
+}
+
+
 variable "profile" {
   type = string
 }
@@ -100,6 +133,11 @@ variable "region" {
 
 variable "access_mode" {
   type = string
+}
+
+variable "env" {
+  type    = string
+  default = "dev"
 }
 
 resource "aws_iam_role_policy" "cross_account_assume" {

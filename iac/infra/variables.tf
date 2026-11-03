@@ -85,3 +85,18 @@ variable "db_enabled" {
 variable "db_kubapp_reciever_role" {
   type = string
 }
+
+variable "allow_kubapp_read_db_state" {
+  type    = bool
+  default = false
+}
+
+variable "sys_monitor_peering_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "allow_kubapp_read_sys_monitor_state" {
+  type    = bool
+  default = false
+}

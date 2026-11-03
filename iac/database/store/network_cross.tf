@@ -183,9 +183,6 @@ resource "aws_vpc_peering_connection" "kubapp_database" {
 
 ############################################
 # DATABASE → KUBAPP ROUTE
-#
-# This becomes usable after KUBAPP accepts
-# the peering request.
 ############################################
 
 resource "aws_route" "database_to_kubapp" {

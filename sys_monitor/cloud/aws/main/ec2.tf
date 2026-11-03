@@ -52,6 +52,16 @@ resource "aws_instance" "sys_monitor" {
   tags = {
     Name = "sys-monitor"
   }
+  depends_on = [
+    aws_ssm_parameter.backend_env,
+    aws_ssm_parameter.github_deploy_key,
+    aws_route53_record.monitor,
+    aws_route53_record.grafana,
+    aws_route53_record.prometheus,
+    aws_route53_record.github,
+    aws_route53_record.codebase,
+    aws_route53_record.gitops,
+  ]
 }
 
 resource "aws_eip" "sys_monitor" {
@@ -69,7 +79,7 @@ resource "aws_eip_association" "sys_monitor" {
 
 resource "aws_key_pair" "sys_monitor" {
   key_name   = "sys-monitor"
-  public_key = file("~/.ssh/sys-monitor.pub")
+  public_key = file(pathexpand("~/.ssh/sys-monitor.pub"))
 }
 
 

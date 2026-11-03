@@ -64,6 +64,17 @@ resource "aws_security_group" "database" {
     security_groups = [local.sg_boundary_id, local.ec2_node_sg_id]
   }
 
+  dynamic "ingress" {
+    for_each = local.sys_monitor_cross_mode_enabled ? [1] : []
+    content {
+      description = "PostgreSQL from sys_monitor over VPC peering"
+      from_port   = local.database_port
+      to_port     = local.database_port
+      protocol    = "tcp"
+      cidr_blocks = [local.sys_monitor_cross_mode_vpc_cidr]
+    }
+  }
+
   egress {
     description = "Database outbound traffic"
     from_port   = 0
@@ -99,3 +110,6 @@ output "database_security_group_id" {
   value = aws_security_group.database.id
 }
 
+output "database_peering_connection_id" {
+  value = null
+}

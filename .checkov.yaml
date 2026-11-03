@@ -1,20 +1,45 @@
 skip-check:
+  # CKV2_AWS_5 — Security groups attached to resources
+  # Accepted: db_access is consumed by Kubernetes configuration in iac/k8s.
+  # ingress is intentionally retained for planned connectivity testing.
   - CKV2_AWS_5
-  - CKV2_AWS_12
-  - CKV_AWS_38
-  - CKV_AWS_39
-  - CKV_AWS_61   #Acc full access
-  - CKV2_AWS_40
-  - CKV_AWS_58
-  - CKV_AWS_23
-  - CKV_AWS_184
-  - CKV_AWS_382
-  - CKV_AWS_355
-  - CKV_AWS_288
-  - CKV_AWS_290
-  - CKV_AWS_158
-  - CKV_AWS_130
-  - CKV_AWS_286
-  - CKV_AWS_287
-  - CKV_AWS_289
 
+  # CKV_AWS_38 — EKS public endpoint access
+  # Accepted: laptop access uses a dynamic public IP, and GitHub-hosted
+  # runners also need access to the Kubernetes API.
+  - CKV_AWS_38
+
+  # CKV_AWS_39 — EKS public endpoint CIDR restriction
+  # Accepted: 0.0.0.0/0 accommodates both access paths without a fixed-IP
+  # allowlist. Kubernetes API authentication and authorization remain required.
+  - CKV_AWS_39
+
+  # CKV_AWS_58 — EKS Secrets encryption
+  # Accepted: EKS 1.31 provides default envelope encryption for Kubernetes
+  # Secrets using an AWS-owned KMS key. A customer-managed key is not
+  # currently required.
+  - CKV_AWS_58
+
+  # CKV_AWS_184 — EFS encryption with a customer-managed KMS key
+  # Accepted: EFS encryption at rest is enabled using the default
+  # AWS-managed key. A customer-managed key is not currently required
+  # for KUBAPP's security or compliance needs. Unnecesary cost
+  - CKV_AWS_184
+
+  # CKV_AWS_355 — IAM policy allows wildcard resources
+  # Accepted for module.iam_core.aws_iam_role_policy.sys_monitor_terraform:
+  # Terraform intentionally has broad administrative permissions to manage
+  # infrastructure across the AWS account for KUBAPP monitoring.
+  - CKV_AWS_355
+
+  # CKV_AWS_290 — IAM write access without constraints
+  # Accepted for module.iam_core.aws_iam_role_policy.sys_monitor_terraform:
+  # Broad write access is intentional because Terraform manages infrastructure
+  # across the AWS account for KUBAPP monitoring.
+  - CKV_AWS_290
+
+  # CKV_AWS_158 — CloudWatch Log Group encryption using KMS
+  # Accepted: CloudWatch Logs uses its default encryption at rest.
+  # A customer-managed KMS key is not currently required for KUBAPP's
+  # security or compliance needs. Avoid unnecessary key-management costs.
+  - CKV_AWS_158

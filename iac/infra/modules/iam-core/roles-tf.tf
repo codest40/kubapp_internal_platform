@@ -236,7 +236,18 @@ resource "aws_iam_role_policy" "sys_monitor_terraform" {
         ]
         Resource = "arn:aws:route53:::hostedzone/${var.zone_id}"
       },
-
+      {
+        Sid    = "ManageVpcPeering"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateVpcPeeringConnection",
+          "ec2:AcceptVpcPeeringConnection",
+          "ec2:DeleteVpcPeeringConnection",
+          "ec2:DescribeVpcPeeringConnections",
+          "ec2:ModifyVpcPeeringConnectionOptions"
+        ]
+        Resource = "*"
+      },
       {
         Sid    = "AllowSysMonitorEC2RolePolicy"
         Effect = "Allow"

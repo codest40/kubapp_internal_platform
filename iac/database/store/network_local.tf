@@ -57,11 +57,22 @@ resource "aws_security_group" "database" {
   vpc_id      = local.kubapp_account_vpc_id
 
   ingress {
-    description     = "PostgreSQL from application data boundary"
-    from_port       = local.database_port
-    to_port         = local.database_port
-    protocol        = "tcp"
-    security_groups = [local.sg_boundary_id]
+      description     = "PostgreSQL from application data boundary"
+      from_port       = local.database_port
+      to_port         = local.database_port
+      protocol        = "tcp"
+      security_groups = [local.sg_boundary_id, local.ec2_node_sg_id]
+  }
+
+  dynamic "ingress" {
+    for_each = local.sys_monitor_cross_mode_enabled ? [1] : []
+    content {
+      description = "PostgreSQL from sys_monitor over VPC peering"
+      from_port   = local.database_port
+      to_port     = local.database_port
+      protocol    = "tcp"
+      cidr_blocks = [local.sys_monitor_cross_mode_vpc_cidr]
+    }
   }
 
   egress {

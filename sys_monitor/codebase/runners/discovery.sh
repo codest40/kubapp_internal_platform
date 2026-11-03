@@ -230,7 +230,7 @@ mapfile -t REPO_SECRETS < <(
     find "${PROJECT_ROOT}" \
         "${EXCLUDE_ARGS[@]}" \
         -type f \
-        \( -name "*.enc" -o -path "*/gitops/secrets*" -o -path "/docker/*/secrets.yml" -o -path "/docker/*/secrets.yaml" \) \
+        \( -name "*.enc" -o -path "*/gitops/secret_mgt*" -o -path "/docker/*/secrets.yml" -o -path "/docker/*/secrets.yaml" \) \
         | sed "s|${PROJECT_ROOT}/||" \
         | sort -u
 )

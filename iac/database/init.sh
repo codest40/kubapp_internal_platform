@@ -215,10 +215,10 @@ case "$ACTION" in
         echo "❌ Unknown action: $ACTION"
         echo
         echo "Usage:"
-        echo "  ./init_tf.sh plan"
-        echo "  ./init_tf.sh apply"
-        echo "  ./init_tf.sh destroy"
-        echo "  ./init_tf.sh destroy yes"
+        echo "  ./init.sh plan"
+        echo "  ./init.sh apply"
+        echo "  ./init.sh destroy"
+        echo "  ./init.sh destroy yes"
         exit 1
         ;;
 esac

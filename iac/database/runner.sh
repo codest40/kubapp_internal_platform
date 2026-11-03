@@ -57,6 +57,7 @@ validate_config() {
     : "${KUBAPP_ACCOUNT_ID:?❌ KUBAPP_ACCOUNT_ID is required}"
     : "${REGION:?❌ REGION is required}"
     : "${GITHUB_ROLE:?❌ GITHUB_ROLE is required}"
+    : "${SYS_MONITOR_CROSS_MODE_ENABLED:? ❌ SYS_MONITOR_CROSS_MODE_ENABLED is required}"
 
     if [[ "$DATABASE_MODE" != "local" && "$DATABASE_MODE" != "cross" ]]; then
         echo "❌ Invalid DATABASE_MODE: $DATABASE_MODE"
@@ -181,7 +182,7 @@ run_plan() {
     run_init
     prepare_secrets
     terraform_validate "$DATABASE_DIR"
-
+    tf_needed_vars
     TF_VAR_state_bucket="$STATE_BUCKET" \
     TF_VAR_state_key="$STATE_KEY" \
     terraform -chdir="$DATABASE_DIR" plan
@@ -196,6 +197,7 @@ run_apply() {
     prepare_secrets
     terraform_validate "$DATABASE_DIR"
 
+    tf_needed_vars
     TF_VAR_state_bucket="$STATE_BUCKET" \
     TF_VAR_state_key="$STATE_KEY" \
     terraform -chdir="$DATABASE_DIR" plan
@@ -231,6 +233,7 @@ run_destroy() {
     terraform_validate "$DATABASE_DIR"
     prepare_secrets
 
+    tf_needed_vars
     TF_VAR_state_bucket="$STATE_BUCKET" \
     TF_VAR_state_key="$STATE_KEY" \
     terraform -chdir="$DATABASE_DIR" plan -destroy
@@ -245,6 +248,7 @@ run_destroy() {
 validate_config
 derive_config
 show_config
+#tf_needed_vars
 
 check_directories \
     "$DATABASE_DIR" \

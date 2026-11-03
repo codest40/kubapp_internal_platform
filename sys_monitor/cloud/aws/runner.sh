@@ -9,6 +9,14 @@ AUTO2=("-Y" "-Yes" "Yes")
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -z "$ROOT" ]] && echo "❌ Unable to determine project root." && exit 1
 
+AWS_DIR="$ROOT/sys_monitor/cloud/aws"
+SECRETS_SCRIPT="$AWS_DIR/main/secrets.sh"
+if  [[ "$ACTION" == "encrypt" ]]; then
+  echo "Encrypting sys_monitor Secrets and SSM Vars"
+  bash "$SECRETS_SCRIPT" encrypt
+  exit 1
+fi
+
 for each in "${AUTO2[@]}"; do
     if [[ "${AUTO,,}" == "${each,,}" ]]; then
         AUTO="true"
@@ -16,7 +24,7 @@ for each in "${AUTO2[@]}"; do
     fi
 done
 
-AWS_DIR="$ROOT/sys_monitor/cloud/aws"
+
 SETUP_ENV="$AWS_DIR/setup.env"
 HELPERS="$AWS_DIR/helpers.sh"
 INIT_TF="$AWS_DIR/init_tf.sh"
@@ -26,7 +34,7 @@ IDENTITY_ROOT="$BOOTSTRAP_DIR/identity"
 MAIN_DIR="$AWS_DIR/main"
 STORE_DIR="$AWS_DIR/store"
 
-for file in "$SETUP_ENV" "$HELPERS" "$INIT_TF" "$PROVIDER"; do
+for file in "$SETUP_ENV" "$HELPERS" "$INIT_TF" "$PROVIDER" "$SECRETS_SCRIPT"; do
     if [[ ! -f "$file" ]]; then
         echo "❌ Required file not found: $file"
         exit 1
@@ -35,6 +43,7 @@ done
 
 source "$SETUP_ENV"
 source "$HELPERS"
+source "$SECRETS_SCRIPT"
 
 validate_config() {
     : "${ENV:?❌ ENV is required}"
@@ -200,7 +209,8 @@ run_plan() {
     activate_provider
     run_init
     terraform_validate "$MAIN_DIR"
-    terraform_vars plan
+    load_secrets
+    terraform_vars plan  #-refresh-only
 }
 
 
@@ -208,6 +218,7 @@ run_apply() {
     activate_provider
     run_init
     terraform_validate "$MAIN_DIR"
+    load_secrets
     terraform_vars plan
 
     if terraform_vars apply --auto-approve; then
@@ -242,7 +253,7 @@ run_destroy() {
     activate_provider
     run_init
     terraform_validate "$MAIN_DIR"
-
+    load_secrets
     terraform_vars plan -destroy
 
     if terraform_vars destroy --auto-approve; then
@@ -303,6 +314,7 @@ case "$ACTION" in
         echo "❌ Unknown action: $ACTION"
         echo
         echo "Usage:"
+        echo "  ./runner.sh encrypt"
         echo "  ./runner.sh apply"
         echo "  ./runner.sh plan"
         echo "  ./runner.sh destroy"

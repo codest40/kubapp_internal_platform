@@ -1,190 +1,102 @@
-# Database Infrastructure Components
+# Database Components
 
-This document explains the main components and concepts used by `iac/database`.
+## 1. Terraform Configuration
 
-## Terraform Configuration
+The Terraform configuration provisions and manages the database infrastructure in AWS.
 
-The database infrastructure is managed independently from the main KUBAPP infrastructure.
+It supports local and cross-account deployment modes, allowing the database to operate either within the KUBAPP account or in a separate AWS account.
 
-Terraform is responsible for creating and maintaining the database, networking, security groups, and supporting AWS resources.
+### Database
 
-The configuration supports both local and cross-account deployment.
+The database is an Amazon RDS PostgreSQL instance. Its configuration controls:
 
-## Deployment Mode
+- PostgreSQL version and instance size.
+- Allocated storage and storage encryption.
+- Multi-AZ deployment.
+- Automated backups and retention.
+- Deletion protection.
 
-The database configuration determines whether it is running in the KUBAPP account or in a separate database account.
+### Database Network
 
-### Local Mode
+The database runs in private subnets and supports both local and cross-account network configurations.
 
-Local mode uses the existing KUBAPP network.
+The selected network configuration determines how the database connects to the KUBAPP VPC.
 
-The database is placed in KUBAPP private subnets and uses the existing VPC.
+### Database Security Group
 
-### Cross-account Mode
+The database security group controls inbound access to PostgreSQL on port `5432`.
 
-Cross-account mode creates the database network in the database account.
+For the current local configuration, access is permitted from the EKS cluster security group because EC2-backed workloads use the node network path.
 
-This includes:
+The `db_access` security group provides a separate access boundary for database workloads and supports future workload-level isolation.
 
-* A database VPC
-* Private subnets
-* Database subnet groups
-* VPC peering with KUBAPP
-* Routes between the two VPCs
+Database access depends on two conditions:
 
-The database account therefore owns its database network while KUBAPP provides the application side of the connection.
+- Network reachability to the database.
+- Valid database credentials.
 
-## RDS PostgreSQL
+### Remote State
 
-The database is provided by Amazon RDS for PostgreSQL.
+The database configuration reads selected values from the KUBAPP Terraform remote state, including:
 
-The database configuration controls properties such as:
+- VPC ID and CIDR.
+- Private subnet IDs.
+- Database access security group ID.
+- EKS cluster security group ID.
 
-* PostgreSQL version
-* Instance size
-* Storage
-* Multi-AZ deployment
-* Encryption
-* Backups
-* Deletion behavior
+This allows the database infrastructure to integrate with KUBAPP without duplicating its network configuration.
 
-Applications do not manage the database server itself.
+## 2. Secret Management
 
-## Database Network
+Database credentials are protected using SOPS.
 
-The database is placed in private subnets and is not intended to be directly exposed to the public internet.
+The database secret configuration supplies the master username and password to Terraform during database provisioning.
 
-The network layout differs by deployment mode, but the database remains reachable through private AWS networking.
+Database connection information is also integrated into KUBAPP's secret configuration flow so applications can obtain the credentials and connection details required to connect.
 
-## Database Security Group
+## 3. Supporting Scripts
 
-The database security group controls network access to PostgreSQL.
+The scripts automate database infrastructure setup, deployment, configuration, and secret handling.
 
-PostgreSQL uses port `5432`.
+| Script | Responsibility |
+|---|---|
+| `runner.sh` | Main database infrastructure runner. Handles initialization, planning, applying, and destroying Terraform resources. It loads the protected setup configuration, selects the deployment mode, prepares required variables and secrets, and coordinates the Terraform workflow. |
+| `init.sh` | Bootstraps the Terraform state backend and, where required, the cross-account role infrastructure. It must be run when setting up the backend and its supporting access resources. |
+| `manage_network.sh` | Selects the local or cross-account network configuration. It activates the corresponding Terraform network file and variable file while removing the files belonging to the other mode. |
+| `helpers.sh` | Provides shared functions used by the database scripts, including AWS identity checks, directory validation, Terraform initialization and validation, SOPS encryption and decryption, and Terraform variable preparation. |
+| `secrets.sh` | Decrypts the database credential file with SOPS and exports the master username and password as Terraform variables. |
 
-The allowed source depends on the deployment mode and the workload networking model.
+### Stored Configuration
 
-For the current local EC2 path, the database trusts the EKS cluster security group because EC2 workloads use the node network path.
+The `store/` directory contains configuration files used by the database infrastructure.
 
-The existing `db_access` boundary remains part of the design for workload-level database access and future stronger isolation.
+It includes the stored Terraform network configurations, optional mode-specific variable files, and encrypted secret files. The scripts select or decrypt these files when required rather than keeping all deployment configurations active simultaneously.
 
-## `db_access`
+### Assume Config
 
-`db_access` represents the platform's database access boundary.
+assume/ directory manages the IAM roles and permissions required for the database infrastructure to operate across AWS accounts.
 
-Today, it is primarily used as a network boundary for workloads that use database services.
+It creates the `db-terraform-role` in the database account, allowing authorized IAM users and the configured GitHub Actions role to assume it and manage database infrastructure.
 
-The current authorization model is intentionally simple:
+The role also grants permission to assume the `db-cross-account-role` in the KUBAPP account, enabling the database infrastructure to access the required KUBAPP resources across account boundaries.
 
-```text
-Network reachability
-        +
-Database credentials
-        =
-Database access
-```
+The directory includes a separate bootstrap configuration for preparing the Terraform state backend used by the assume-role infrastructure.
 
-This leaves room for the platform to introduce stronger workload-level controls later without changing the application's basic database contract.
+This separates the permissions required to provision and manage the database infrastructure from the credentials used to initiate deployment.
 
-## Database Credentials
+## 4. Application Integration
 
-Applications that use the database receive database credentials through the KUBAPP secret flow.
+The database infrastructure provides the database service and the connection information applications need to use it.
 
-Having network access to PostgreSQL does not by itself provide database access. The application also needs valid database credentials.
+**Infrastructure ownership includes:**
+- Database provisioning and configuration.
+- Network connectivity and security boundaries.
+- Storage, availability, and backups.
+- Database infrastructure credentials.
 
-This separates:
+**Application ownership includes:**
+- Database schemas and migrations.
+- Queries and application-level data operations.
+- Connection handling and application data behaviour.
 
-* **Can the workload reach PostgreSQL?**
-* **Can the workload authenticate to PostgreSQL?**
-
-## SOPS
-
-SOPS is used to protect database secrets.
-
-Encrypted secret configuration can be stored with the project while keeping database passwords protected.
-
-The database infrastructure does not expose plaintext credentials as part of its normal repository configuration.
-
-## Secret Integration
-
-Database information produced by the infrastructure is passed into the KUBAPP secret flow.
-
-Supporting scripts update the database-related configuration consumed by applications.
-
-The database layer provides the infrastructure information; KUBAPP handles making that information available to workloads.
-
-## Remote State
-
-The database layer reads selected information from the KUBAPP infrastructure Terraform state.
-
-Examples include:
-
-* VPC ID
-* VPC CIDR
-* Private subnet IDs
-* Database access security-group ID
-* EKS cluster security-group ID
-
-This allows the database layer to integrate with existing infrastructure without recreating resources it does not own.
-
-## Cross-account Access
-
-Cross-account deployments require controlled access between the database account and KUBAPP.
-
-The database infrastructure can use roles created for the database account to perform the required Terraform operations and establish the required network relationship.
-
-The database account owns its resources while KUBAPP retains ownership of its own infrastructure.
-
-## Supporting Scripts
-
-Scripts around the database infrastructure handle tasks that are not Terraform resources themselves.
-
-Examples include:
-
-* Updating database connection information
-* Updating the KUBAPP database secret configuration
-* Creating Kubernetes secrets from the protected configuration
-
-These scripts connect the infrastructure layer to the GitOps and application layers.
-
-## Application Integration
-
-An application declares that it needs database access.
-
-KUBAPP then provides the required database connection information and credentials.
-
-The application remains responsible for:
-
-* Creating or migrating its schema
-* Running queries
-* Managing its connection pool
-* Handling application-level database errors
-* Defining its own database behavior
-
-The database infrastructure does not manage application-specific database logic.
-
-## Ownership Boundary
-
-The database layer owns:
-
-```text
-AWS database infrastructure
-Network
-Security groups
-Database availability
-Storage
-Backups
-Database infrastructure credentials
-```
-
-The application owns:
-
-```text
-Schema
-Queries
-Migrations
-Connection usage
-Application data behavior
-```
-
-KUBAPP connects these two sides without taking ownership of application database logic.
+This separation allows KUBAPP to manage the database infrastructure while applications retain control over how they use the database.

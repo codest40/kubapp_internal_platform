@@ -1,9 +1,11 @@
-# IAM wildcard policies (IRSA / EKS access patterns)
+# EKS access patterns
 AWS-0039
 AWS-0040
 AWS-0041
 
-# NETWORK (intentional design choices)
-AWS-0164
-AWS-0104
-
+ 
+| Finding                                 | Decision                                | Why                                                                                                                                                                          |
+| --------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AWS-0039 — Secrets encryption**       | No explicit `encryption_config`         | EKS Kubernetes 1.31 provides default envelope encryption. A customer-managed key is a separate control decision, adds unnecessary cost and not a critical requirement |
+| **AWS-0040 — Public endpoint**          | Retain public access                    | Both dynamic-IP laptop and GitHub-hosted runners need to reach the EKS API.                                                                                              |
+| **AWS-0041 — Unrestricted public CIDR** | Retain `0.0.0.0/0`                      | A narrow static allowlist does not currently accommodate both access paths reliably. Authentication and authorization are still required.                                    |

@@ -238,3 +238,36 @@ module "database" {
     layer         = "storage"
   })
 }
+
+############################################
+# SYS_MONITOR VPC PEERING
+############################################
+module "sys_monitor" {
+  count  = local.sys_monitor_enabled ? 1 : 0
+  source = "./modules/sys_monitor"
+
+  sys_monitor_cross_account_enabled = local.sys_monitor_cross_mode_enabled
+  allow_kubapp_read_sys_monitor_state = (
+    local.allow_kubapp_read_sys_monitor_state
+  )
+
+  kubapp_vpc_id                  = module.network.vpc_id
+  kubapp_private_route_table_ids = module.network.private_route_table_ids
+
+  sys_monitor_account_id   = var.cross_account_ids["monitor"]
+  sys_monitor_state_bucket = local.sys_monitor_state_bucket
+  sys_monitor_state_key    = local.sys_monitor_state_key
+  sys_monitor_state_reader_role_arn = (
+    local.sys_monitor_state_reader_role_arn
+  )
+
+  admin_kubapp_arn = local.admin_kubapp_arn
+  admin_github_arn = local.admin_github_arn
+  env              = var.env
+  region           = var.region
+
+  tags = merge(local.common_tags, {
+    resource-type = "vpc-peering"
+    layer         = "network"
+  })
+}

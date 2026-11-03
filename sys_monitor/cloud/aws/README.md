@@ -1,163 +1,149 @@
-# SysMonitor AWS Infrastructure
+# SysMonitor AWS
 
 The `cloud/aws` layer provisions and operates the AWS environment in which SysMonitor runs.
 
-SysMonitor is deployed as a Docker-based monitoring platform on an EC2 instance. Terraform manages the underlying AWS resources and IAM configuration, while the instance bootstrap process installs the runtime dependencies, retrieves required configuration, deploys the application, and starts the services.
+SysMonitor runs as a Docker-based monitoring platform on an EC2 instance. Terraform manages the AWS infrastructure, IAM, networking, DNS, and deployment lifecycle, while the EC2 bootstrap prepares the host and starts the application runtime.
 
-The deployment supports both **same-account** and **cross-account** operation against the KUBAPP AWS environment.
+The deployment supports both **local** and **cross-account** operation against KUBAPP.
+
+For workstation preparation, AWS profile configuration, credentials, GitHub access, SSM configuration, and first-time environment setup, see [`SETUP.md`](./SETUP.md).
+
+---
+
+## Architecture
+
+The AWS layer establishes the infrastructure boundary around the SysMonitor application:
+
+```text
+Terraform
+    │
+    ├── Networking
+    ├── Security Groups
+    ├── EC2
+    ├── Elastic IP
+    ├── IAM
+    ├── DNS
+    └── Terraform State
+          │
+          ▼
+      EC2 Bootstrap
+          │
+          ├── Host dependencies
+          ├── GitHub access
+          ├── Runtime configuration
+          └── Docker Compose
+                    │
+                    ▼
+             SysMonitor Services
+```
+
+Terraform is the source of truth for the AWS infrastructure.
+
+The EC2 instance is the runtime host.
+
+Docker Compose owns the SysMonitor application services after the host has been prepared.
+
+---
 
 ## Responsibilities
 
 The AWS layer is responsible for:
 
-* Provisioning the SysMonitor VPC and subnet.
-* Provisioning the EC2 host and Elastic IP.
-* Configuring security groups and network access.
-* Creating and configuring the SysMonitor EC2 IAM role and instance profile.
-* Configuring access to KUBAPP resources in same-account or cross-account mode.
-* Managing Terraform remote state.
-* Reading the KUBAPP infrastructure state required by SysMonitor.
-* Managing Route 53 records for SysMonitor services.
-* Bootstrapping a new EC2 instance.
-* Installing the system and container runtime dependencies.
-* Retrieving the GitHub deployment key from AWS Systems Manager Parameter Store.
-* Cloning the SysMonitor repository.
-* Generating runtime configuration for the deployed services.
-* Starting the Docker Compose stack.
-* Configuring the public edge, including Nginx and TLS.
-* Reporting deployment state through the SysMonitor deployment status mechanism.
+* AWS networking required by SysMonitor.
+* EC2 infrastructure.
+* Elastic IP and security groups.
+* SysMonitor IAM roles and instance profile.
+* Terraform remote state.
+* DNS and public edge configuration.
+* EC2 bootstrap.
+* Runtime host preparation.
+* Deployment of the SysMonitor container stack.
+* Cross-account AWS access where enabled.
+* Coordination with KUBAPP infrastructure.
 
-The infrastructure layer does not manage the Kubernetes workloads themselves. KUBAPP owns its EKS infrastructure and Kubernetes resources. SysMonitor consumes the resources it has been explicitly granted access to.
+The AWS layer does not manage KUBAPP's Kubernetes workloads.
 
-## Deployment Architecture
+KUBAPP owns its EKS infrastructure and Kubernetes authorization model. SysMonitor consumes only the resources to which it has explicitly been granted access.
 
-A normal deployment follows this flow:
-
-```text
-Terraform
-    │
-    ├── VPC
-    ├── Subnet
-    ├── Security Group
-    ├── EC2
-    ├── Elastic IP
-    ├── IAM Role / Instance Profile
-    └── DNS / Route 53
-          │
-          ▼
-      EC2 Bootstrap
-          │
-          ├── Install system dependencies
-          ├── Install Docker tooling
-          ├── Configure AWS access
-          ├── Retrieve deployment secret
-          ├── Clone SysMonitor
-          ├── Generate .env
-          └── Start Docker Compose
-                    │
-                    ▼
-              SysMonitor Services
-```
-
-The EC2 instance is therefore the runtime host, while Terraform remains the source of truth for the AWS infrastructure surrounding it.
-
-## Repository Structure
-
-The AWS deployment is divided into Terraform configuration, bootstrap configuration, and runtime scripts.
-
-```text
-cloud/aws/
-├── boot/
-├── assume/
-├── main/
-├── backend.tf
-├── config_local.tf
-├── config_cross.tf
-├── local.tf
-├── providers.tf
-├── variables.tf
-├── outputs.tf
-└── runner.sh
-```
-
-The exact contents can evolve as the deployment implementation changes. The important boundary is:
-
-* **Terraform** defines infrastructure and IAM.
-* **Bootstrap configuration** prepares prerequisites such as remote state and cross-account access.
-* **Runtime scripts** prepare the EC2 host and start SysMonitor.
-* **Docker Compose** owns the application services once the host is ready.
+---
 
 ## Deployment Modes
 
-SysMonitor supports two AWS access modes for the target KUBAPP environment.
+SysMonitor supports two deployment modes.
 
-### Local Mode
+### Local
 
-In local mode, SysMonitor runs in the same AWS account as the target KUBAPP resources.
+In local mode, SysMonitor operates against KUBAPP resources within the same AWS account boundary.
 
-The EC2 instance uses its own:
-
-```text
-sys-monitor-ec2-role
-```
-
-to access the target resources.
-
-The application receives AWS credentials through the EC2 instance profile. No static AWS credentials are placed in the application configuration.
-
-### Cross-Account Mode
-
-In cross-account mode, SysMonitor runs in its own AWS account while the target KUBAPP infrastructure resides in another account.
-
-The EC2 instance first obtains credentials through:
+The EC2 runtime uses:
 
 ```text
 sys-monitor-ec2-role
 ```
 
-in the SysMonitor account.
+as its AWS identity.
 
-The application then assumes:
+The application obtains AWS credentials from the EC2 instance profile rather than from static credentials stored in application configuration.
+
+---
+
+### Cross-Account
+
+In cross-account mode, SysMonitor runs in a separate AWS account from KUBAPP.
+
+The EC2 instance receives:
+
+```text
+sys-monitor-ec2-role
+```
+
+through its instance profile.
+
+When access to KUBAPP resources is required, the application assumes:
 
 ```text
 sys-monitor-cross-account-role
 ```
 
-in the KUBAPP account when accessing KUBAPP resources.
+in the KUBAPP account.
 
-The runtime flow is:
+The runtime relationship is:
 
 ```text
 SysMonitor EC2
-     │
-     │ instance profile
-     ▼
+      │
+      │ instance profile
+      ▼
 sys-monitor-ec2-role
-     │
-     │ sts:AssumeRole
-     ▼
+      │
+      │ AssumeRole
+      ▼
 KUBAPP account
+      │
+      ▼
 sys-monitor-cross-account-role
-     │
-     ▼
+      │
+      ▼
 KUBAPP resources
 ```
 
-This is an application-level AWS authentication flow. SysMonitor does not require a manually created kubeconfig or manually exported AWS credentials to perform its normal EKS monitoring.
+The runtime role and Terraform provisioning role are separate identities with separate responsibilities.
+
+---
 
 ## EKS Access
 
-For EKS monitoring, the cross-account role is mapped into the KUBAPP EKS cluster through an EKS Access Entry.
+When SysMonitor monitors KUBAPP EKS, AWS authentication and Kubernetes authorization are separate layers.
 
-The role is associated with the Kubernetes group:
+The cross-account IAM role is registered with the EKS cluster through an EKS Access Entry and mapped to:
 
 ```text
 sys-monitor-gitops
 ```
 
-Kubernetes RBAC then grants that group only the resources required by the GitOps exporter.
+Kubernetes RBAC grants that group only the resources required by the monitoring application.
 
-Current permissions include:
+The current GitOps exporter requires:
 
 ```text
 nodes
@@ -167,192 +153,423 @@ argoproj.io/applications
   └── list
 ```
 
-This separates the responsibilities:
+The authorization chain is therefore:
 
 ```text
 AWS IAM
-  → establishes AWS/EKS identity
-
+    │
+    │ establishes AWS identity
+    ▼
 EKS Access Entry
-  → maps the AWS identity into Kubernetes
-
+    │
+    │ maps identity
+    ▼
+Kubernetes group
+    │
+    │ sys-monitor-gitops
+    ▼
 Kubernetes RBAC
-  → defines what SysMonitor can read
+    │
+    ├── nodes:list
+    └── applications:list
 ```
 
-SysMonitor therefore does not require cluster-admin access to collect its GitOps metrics.
+SysMonitor does not require Kubernetes cluster-admin privileges for this monitoring path.
 
-## Runtime Authentication
+---
 
-The GitOps exporter does not depend on the EC2 host having a persistent Kubernetes configuration.
+## Runtime Kubernetes Authentication
 
-In cross-account mode, its runtime authentication is performed programmatically:
+The SysMonitor application does not depend on a persistent kubeconfig on the EC2 host.
+
+The GitOps exporter establishes its Kubernetes connection programmatically.
+
+In cross-account mode:
 
 ```text
-EC2 instance credentials
-        │
-        ▼
-Assume sys-monitor-cross-account-role
-        │
-        ▼
-Describe KUBAPP EKS cluster
-        │
-        ▼
-Obtain EKS authentication token
-        │
-        ▼
+EC2 credentials
+      │
+      ▼
+sys-monitor-ec2-role
+      │
+      │ AssumeRole
+      ▼
+sys-monitor-cross-account-role
+      │
+      ▼
+EKS cluster information
+      │
+      ▼
+EKS authentication token
+      │
+      ▼
 Kubernetes API
-        │
-        ├── list nodes
-        └── list ArgoCD Applications
 ```
 
-This allows the deployed application to recover its AWS and EKS access automatically whenever the instance and containers are recreated.
+This allows the application to recreate its AWS and Kubernetes access when the EC2 host or containers are recreated.
 
-Interactive `kubectl` access from an operator is a separate operational workflow and is not a dependency of the SysMonitor application.
+An operator may use `kubectl` independently for administration and troubleshooting, but an operator-managed kubeconfig is not a dependency of the SysMonitor runtime.
 
-## EC2 Bootstrap
-
-A new EC2 instance is prepared by `user_data.sh`.
-
-The bootstrap process installs the dependencies required by the platform, including:
-
-* Git
-* Docker
-* Docker Buildx
-* Docker Compose
-* `kubectl`
-* AWS tooling
-* SSM Agent
-
-The bootstrap process then:
-
-1. Retrieves the GitHub deployment key from SSM Parameter Store.
-2. Configures GitHub SSH access.
-3. Clones the SysMonitor repository.
-4. Loads the appropriate deployment mode.
-5. Generates the runtime `.env`.
-6. Starts the Docker Compose services.
-7. Waits for the services to become healthy.
-8. Configures the public edge.
-9. Configures TLS and certificate renewal.
-10. Marks the deployment as active.
-
-The instance therefore becomes operational from a fresh provision without requiring an operator to manually install or configure the application stack.
-
-## Runtime Configuration
-
-The generated runtime configuration identifies the target environment and, where required, the cross-account role.
-
-For cross-account operation, the application receives configuration equivalent to:
-
-```text
-CLUSTER_MODE=cross
-TARGET_CLUSTER_NAME=kubapp-dev
-TARGET_REGION=us-east-1
-TARGET_ROLE_ARN=arn:aws:iam::<kubapp-account>:role/sys-monitor-cross-account-role
-```
-
-The application uses the role ARN to establish its target AWS identity at runtime.
-
-Credentials themselves are not stored in this configuration.
+---
 
 ## Terraform State
 
 SysMonitor uses S3-backed Terraform state.
 
-The state backend is initialized separately from the main infrastructure deployment so that the state storage exists before Terraform attempts to manage the rest of the environment.
+State infrastructure is initialized separately from the main runtime infrastructure so that the backend exists before the main Terraform configuration uses it.
 
-The deployment can consume KUBAPP's Terraform state to obtain infrastructure information such as:
+SysMonitor also consumes selected outputs from KUBAPP infrastructure state. These outputs provide information required to configure resources such as the target EKS cluster and domain.
 
-* EKS cluster name.
-* Domain information.
-* Other exported infrastructure values required by SysMonitor.
-
-In cross-account mode, access to KUBAPP state is performed through the Terraform-specific cross-account role. The runtime application role and the Terraform provisioning role have separate responsibilities.
+The Terraform provisioning identity is separate from the runtime identity:
 
 ```text
-Terraform provisioning
-        │
-        ▼
+Terraform
+    │
+    ▼
 sys-monitor-terraform-role
-        │
-        ▼
+    │
+    ▼
 KUBAPP Terraform state / infrastructure
 
-Application runtime
-        │
-        ▼
+
+SysMonitor runtime
+    │
+    ▼
 sys-monitor-cross-account-role
-        │
-        ▼
+    │
+    ▼
 KUBAPP runtime resources
 ```
 
-This separation prevents the application runtime identity from becoming the Terraform administration identity.
+This prevents the application runtime identity from becoming a Terraform administration identity.
 
-## Access and Operations
+---
 
-The deployment supports both SSM and SSH-based administrative access.
+## `store/status` Coordination
 
-SSM is the preferred management path when enabled because it does not require exposing an SSH service to the public network.
-
-SSH access can be enabled when required by the deployment configuration.
-
-The application itself does not depend on either access method once the EC2 bootstrap has completed.
-
-## Deployment Lifecycle
-
-A complete deployment is treated as an infrastructure lifecycle rather than a collection of manual setup steps.
+The AWS deployment maintains:
 
 ```text
-apply
-  │
-  ▼
-AWS infrastructure
-  │
-  ▼
-EC2 bootstrap
-  │
-  ▼
-SysMonitor containers
-  │
-  ▼
-Health checks
-  │
-  ▼
-Edge / TLS
-  │
-  ▼
+store/status
+```
+
+as a coordination mechanism between SysMonitor and KUBAPP infrastructure.
+
+It is **not a SysMonitor health indicator**.
+
+The status communicates whether the SysMonitor deployment has reached the lifecycle state required for KUBAPP to provision or retain its dependent cross-account resources.
+
+The expected states are:
+
+```text
+active
+inactive
+```
+
+### Active
+
+After a successful SysMonitor deployment, `runner.sh` records:
+
+```text
 active
 ```
 
-A destroy operation removes the provisioned environment and updates the SysMonitor deployment state accordingly.
+This indicates that the SysMonitor-side infrastructure and identity required for the cross-account relationship are available.
 
-This allows the deployment status mechanism to distinguish an active SysMonitor environment from one that has been destroyed or is unavailable.
+KUBAPP infrastructure can use this state when deciding whether its SysMonitor cross-account resources should be enabled.
+
+### Inactive
+
+After a successful SysMonitor destroy operation, `runner.sh` records:
+
+```text
+inactive
+```
+
+This indicates that the SysMonitor deployment is no longer available for that cross-account relationship.
+
+KUBAPP infrastructure can use this state when deciding whether dependent cross-account resources should be removed or disabled.
+
+### Coordination flow
+
+```text
+SysMonitor
+    │
+    ├── deploy ──────► store/status = active
+    │                         │
+    │                         ▼
+    │                    KUBAPP IaC
+    │                         │
+    │                         ▼
+    │                  cross-account resources
+    │
+    └── destroy ─────► store/status = inactive
+                              │
+                              ▼
+                         KUBAPP IaC
+                              │
+                              ▼
+                    dependent resources
+```
+
+The status mechanism therefore coordinates **infrastructure lifecycle between the two platforms**.
+
+It does not represent:
+
+* EC2 health
+* Docker health
+* Prometheus health
+* Grafana health
+* Kubernetes health
+* application availability
+
+Those concerns are handled by the platform's runtime and observability mechanisms.
+
+---
+
+## EC2 Runtime
+
+EC2 is the runtime host for SysMonitor.
+
+A newly provisioned instance is prepared through the bootstrap process, which installs the dependencies required to run the platform and then starts the Docker Compose environment.
+
+The bootstrap establishes the runtime from the infrastructure definition rather than requiring the operator to manually configure the host.
+
+At a high level:
+
+```text
+EC2 provisioned
+      │
+      ▼
+Bootstrap
+      │
+      ├── system dependencies
+      ├── Docker tooling
+      ├── GitHub access
+      ├── runtime configuration
+      └── application source
+      │
+      ▼
+Docker Compose
+      │
+      ▼
+SysMonitor
+```
+
+Detailed bootstrap prerequisites and workstation configuration are documented in [`SETUP.md`](./SETUP.md).
+
+---
+
+# Entry Points
+
+The AWS layer exposes two primary operational entry points:
+
+```text
+init_tf.sh
+runner.sh
+```
+
+They have different responsibilities.
+
+---
+
+## `init_tf.sh`
+
+`init_tf.sh` manages the Terraform state infrastructure required by the deployment.
+
+It is responsible for establishing the S3-backed state environment before the main runtime Terraform configuration uses it.
+
+### Apply
+
+```bash
+./init_tf.sh apply
+```
+
+Creates or prepares the required Terraform state infrastructure.
+
+### Plan
+
+```bash
+./init_tf.sh plan
+```
+
+Shows the changes that would be made to the state infrastructure.
+
+### Destroy
+
+```bash
+./init_tf.sh destroy
+```
+
+Removes the Terraform state infrastructure.
+
+State destruction is separate from destroying the SysMonitor runtime. The normal runtime lifecycle does not require destroying the state backend.
+
+---
+
+## `runner.sh`
+
+`runner.sh` is the main SysMonitor infrastructure lifecycle entry point.
+
+It manages the selected deployment mode, identity bootstrap, Terraform provider configuration, main Terraform backend, runtime infrastructure, and deployment-state coordination.
+
+### Plan
+
+```bash
+./runner.sh plan
+```
+
+Runs the deployment through the planning path without applying the resulting infrastructure changes.
+
+### Apply
+
+```bash
+./runner.sh apply
+```
+
+Runs the complete SysMonitor infrastructure deployment.
+
+At a high level:
+
+```text
+runner.sh apply
+      │
+      ▼
+Configuration
+      │
+      ▼
+Identity bootstrap
+      │
+      ▼
+Provider selection
+      │
+      ▼
+Terraform initialization
+      │
+      ▼
+Terraform plan
+      │
+      ▼
+Terraform apply
+      │
+      ▼
+Deployment status
+      │
+      ▼
+SysMonitor runtime
+```
+
+A successful apply records the appropriate deployment state in:
+
+```text
+store/status
+```
+
+---
+
+### Destroy
+
+```bash
+./runner.sh destroy
+```
+
+Destroys the SysMonitor runtime infrastructure.
+
+The command requires confirmation unless explicitly run in automatic mode:
+
+```bash
+./runner.sh destroy -y
+```
+
+After a successful destroy, the deployment status is changed to:
+
+```text
+inactive
+```
+
+This allows KUBAPP infrastructure to recognize that the SysMonitor-side cross-account dependency is no longer available.
+
+---
+
+# Lifecycle
+
+The two entry points work together:
+
+```text
+             init_tf.sh
+                  │
+                  ▼
+        Terraform state backend
+                  │
+                  │
+                  ▼
+             runner.sh
+                  │
+          ┌───────┴───────┐
+          │               │
+        apply           destroy
+          │               │
+          ▼               ▼
+    AWS infrastructure   remove runtime
+          │               │
+          ▼               ▼
+       EC2 runtime    status = inactive
+          │
+          ▼
+    status = active
+```
+
+The state bootstrap is therefore a prerequisite layer, while `runner.sh` manages the actual SysMonitor environment.
+
+---
 
 ## Operational Boundary
 
-The AWS layer owns **where and how SysMonitor runs**.
+The AWS layer defines **where and how SysMonitor runs**.
 
-The application layer owns **what SysMonitor monitors**.
+The SysMonitor application defines **what operational data it collects and exposes**.
 
-KUBAPP owns the target Kubernetes infrastructure and its Kubernetes authorization model.
+KUBAPP defines **the target AWS and Kubernetes infrastructure**.
 
-This separation is intentional:
+The boundaries are:
 
 ```text
 SysMonitor AWS
-    → provision and run SysMonitor
+    │
+    └── provision and operate SysMonitor runtime
 
 SysMonitor application
-    → collect and expose operational data
+    │
+    └── collect and expose monitoring data
 
-KUBAPP infrastructure
-    → provision EKS and AWS resources
+KUBAPP AWS infrastructure
+    │
+    └── provision target AWS resources and EKS
 
 KUBAPP Kubernetes layer
-    → control Kubernetes access
+    │
+    └── authorize SysMonitor's Kubernetes access
 ```
 
-Changes to one boundary should not require giving the other component unnecessary administrative privileges.
+Each layer retains only the permissions and responsibilities required for its role.
+
+---
+
+## Documentation
+
+Use:
+
+```text
+README.md
+```
+
+for the architecture, responsibilities, deployment model, lifecycle, and operational entry points.
+
+Use:
+
+```text
+SETUP.md
+```
+
+for workstation preparation, AWS profiles, credentials, GitHub access, SSM configuration, deployment prerequisites, environment configuration, and step-by-step deployment verification.
+

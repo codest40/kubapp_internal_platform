@@ -124,3 +124,17 @@ decrypt_setup_env() {
 
     echo "✅ setups.env file decrypted"
 }
+
+tf_needed_vars() {
+    local name
+    local value
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+
+        value="${!name}"
+        export "TF_VAR_${name,,}=$value"
+    done < <(
+        sed -nE 's/^[[:space:]]*([A-Z][A-Z0-9_]*)[[:space:]]*=.*/\1/p' \
+            "$DATABASE_DIR/setup.env"
+    )
+}

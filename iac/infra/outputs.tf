@@ -170,3 +170,11 @@ output "db_lets_kubapp_read_state_arn" {
 output "show_database_state" {
   value = local.show_database_state
 }
+
+output "show_sys_monitor_state" {
+  value = local.show_sys_monitor_state
+}
+
+output "sys_monitor_state_reader_role" {
+  value = try(module.sys_monitor[0].sys_monitor_state_reader_role, "NO ATTACHED")
+}

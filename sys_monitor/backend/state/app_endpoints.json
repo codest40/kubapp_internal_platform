@@ -1,0 +1,26 @@
+{
+  "env": "dev",
+  "updated_at": "2026-10-30T09:40:16.615837+00:00",
+  "apps": {
+    "node-order-app": {
+      "url": "https://node-order-app.rundailytest.online",
+      "readiness": "https://node-order-app.rundailytest.online/health",
+      "liveness": "https://node-order-app.rundailytest.online/health"
+    },
+    "typescript-app": {
+      "url": "https://typescript-app.rundailytest.online",
+      "readiness": "https://typescript-app.rundailytest.online/health",
+      "liveness": "https://typescript-app.rundailytest.online/health"
+    },
+    "python-cicd": {
+      "url": "https://python-cicd.rundailytest.online",
+      "readiness": "https://python-cicd.rundailytest.online/health",
+      "liveness": "https://python-cicd.rundailytest.online/health"
+    },
+    "kubwatch": {
+      "url": "https://kubwatch.rundailytest.online",
+      "readiness": "https://kubwatch.rundailytest.online/health/",
+      "liveness": "https://kubwatch.rundailytest.online/health/"
+    }
+  }
+}

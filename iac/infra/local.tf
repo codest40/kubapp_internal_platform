@@ -165,6 +165,25 @@ locals {
 
   database_state_bucket      = "kubapp-database-tf-state-${var.cross_account_ids["db"]}"
   database_state_key         = "${var.env}/database/tf-state"
-  allow_kubapp_read_db_state = false
+  allow_kubapp_read_db_state = var.allow_kubapp_read_db_state
+
+  # Sys_monitor VPC peering
+  sys_monitor_peering_enabled         = var.sys_monitor_peering_enabled
+  allow_kubapp_read_sys_monitor_state = var.allow_kubapp_read_sys_monitor_state
+  sys_monitor_state_bucket            = "kubapp-sys-monitor-${var.cross_account_ids["monitor"]}"
+  sys_monitor_state_key               = "${var.env}/sys-monitor-runtime/tf-state"
+
+  sys_monitor_state_reader_role_arn = (
+    "arn:aws:iam::${var.cross_account_ids["monitor"]}:role/allow-kubapp-read-sys-monitor-state-role"
+  )
+  sys_monitor_enabled = var.sys_monitor_enabled
+  sys_monitor_cross_mode_enabled = (
+    local.sys_monitor_enabled && local.sys_monitor_peering_enabled
+  )
+  show_sys_monitor_state = (
+    local.sys_monitor_cross_mode_enabled ? "cross" :
+    var.sys_monitor_enabled ? "local" :
+    "disabled"
+  )
 }
 

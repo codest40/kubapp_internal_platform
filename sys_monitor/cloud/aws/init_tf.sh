@@ -86,7 +86,7 @@ show_config() {
     echo "REGION       : $REGION"
     echo "BUCKET       : $STATE_BUCKET"
     echo "ACTIVE STATE : $ACTIVE_STATE_KEY"
-    echo "RUNTIME STATE: $ENV/sys-monitor-runtime/tf-state"
+    echo "IDENTITY STATE: $ENV/sys-monitor-runtime/tf-state"
     line
 }
 
