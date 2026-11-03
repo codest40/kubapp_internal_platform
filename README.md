@@ -1,6 +1,6 @@
 # KUBAPP
 
-- KUBAPP is a Kubernetes-based application delivery and monitoring platform that brings together cloud infrastructure provisioning, CI/CD, GitOps, and observability to simplify how applications are built, deployed, and operated.
+- KUBAPP is a Kubernetes-based application delivery and monitoring platform that integrates cloud infrastructure provisioning, CI/CD, GitOps, and observability into a unified application lifecycle.
 - Each major section of the platform has its own README.
 
 ## Core Principles
