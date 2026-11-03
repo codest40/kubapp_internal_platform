@@ -25,4 +25,4 @@ Security, Cost efficiency, and Operational adaptability guide the platform's des
 - [Execution Flow](docs/execution_flow.md)
 - [GitOps](docs/gitops.md)
 - [Observability](docs/observability.md)
-
+- [Monthly Cost Estimate](docs/monthly_cost_estimate.md)
