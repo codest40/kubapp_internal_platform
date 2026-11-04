@@ -1,101 +1,67 @@
-# Summary of what kubapp does
+# KUBAPP APPLICATION LIFECYCLE SUMMARY
 
-## 1. Infrastructure Provisioning
+KUBAPP is primarily designed as a heterogeneous application onboarding and delivery platform. It accommodates applications built with different runtimes, tools, and development approaches while maintaining centralized control over validation, security, build execution, and delivery. By default, KUBAPP treats developer-supplied code and executable inputs as potentially malicious, applying controlled execution boundaries and layered security checks throughout the application lifecycle.
 
-- KUBAPP uses Terraform to establish and manage the AWS infrastructure that supports its application delivery platform. This includes initial account and identity setup, networking, EKS, IAM, security controls, DNS, certificates, storage, logging, and database infrastructure.
-- Infrastructure is organized into reusable modules and environment-specific configurations, with support for separate database infrastructure and cross-account networking. Kubernetes configuration and platform manifests build on this foundation.
+The infrastructure provisioned through `iac/` using Terraform is assumed to be available before application onboarding begins. This provides the cloud infrastructure, identity, networking, Kubernetes, and supporting services required by the platform.
 
-### The infrastructure layer covers:
+### 1. Application Discovery and Qualification
 
-- Bootstrap and identity: Initial AWS and GitHub setup, including an OIDC-only bootstrap path.
-- Core cloud infrastructure: Networking, EKS, IAM, security groups, ACM certificates, and supporting AWS resources.
-- Database infrastructure: Database provisioning and cross-account networking.
-- DNS management: Route 53 and DNS infrastructure.
-- Storage and logging: EFS and logging integrations.
-- Kubernetes configuration: Cluster configuration, manifests, and platform alerts.
-- Infrastructure organization: Reusable Terraform modules, environment-specific configurations, and managed infrastructure state.
+Applications are organized independently under `docker/`. KUBAPP discovers eligible applications through the presence of a `ci.yml` file at the root of each application directory.
 
+Each discovered application is validated against the platform's expected configuration requirements. These include a non-empty Dockerfile, required manifest files, and valid CI configuration. Optional application data files, such as `kubapp.yml` and encrypted secret files, are also recognized where applicable.
 
-## 2. Kubernetes + GitOps Platform
+Only qualified applications proceed to CI processing. Their required configuration and supporting data are collected, and isolated execution environments are prepared for their individual build workflows.
 
-KUBAPP uses Kubernetes as its application runtime and Argo CD to manage deployments through GitOps. Application definitions, Helm charts, environment-specific values, ingress configuration, and deployment state are organized in Git to support consistent, traceable application delivery.
+### 2. Application CI and Layered Security Validation
 
-### The Kubernetes and GitOps layer covers:
-- **GitOps reconciliation:** Argo CD applications and configuration for synchronizing the desired state in Git with the Kubernetes cluster.
-- **Reusable Helm charts:** Shared charts for applications, ingress, and PostgreSQL.
-- **Environment management:** Environment-specific application values and ingress configuration.
-- **Application and service registry:** Registry state used to organize application and service information.
-- **Secret management:** SOPS-managed secrets for GitOps configuration.
-- **Platform state:** State used to track platform build and deployment processes.
+Qualified applications enter CI concurrently, with each component processed in a separate thread and its own execution context.
 
+The workflow applies multiple security layers:
 
-## 3. Observability and Platform Visibility
+- **Command policy validation:** Developer-supplied commands and tools are checked against platform restrictions. Unapproved operations, including potentially dangerous utilities and unrestricted shell execution, are restricted.
+- **AI-assisted security assessment:** Applicable developer-supplied test scripts, commands, modules, and other executable artifacts are analyzed through the configured AI assessment providers. Each assessment returns a decision value (`0` or `1`) alongside its reasoning. KUBAPP evaluates the result and retains authority over whether execution may proceed.
+- **Source-code analysis:** KUBAPP integrates SonarQube to examine application source code for potential bugs, security-sensitive patterns, and maintainability issues. This provides a platform-managed analysis layer, including for applications whose developers have not defined their own application-specific CI tests.
+- **Restricted application execution:** Developer-defined linting, application security checks, and unit tests execute inside a restricted environment designed to limit unnecessary access to the host and platform.
 
-KUBAPP includes an extensive observability system designed to provide visibility into the platform, deployed applications, and supporting infrastructure. It combines metrics, monitoring integrations, codebase analysis, and a customized operational interface to help users understand application and platform state, investigate issues, and manage their deployments.
+Required checks must satisfy their configured conditions before an application can proceed.
 
-### The observability layer covers:
-- **Infrastructure monitoring:** Visibility into AWS resources and supporting cloud infrastructure.
-- **Application and platform metrics:** Prometheus-based monitoring and Grafana integrations.
-- **Codebase discovery and analysis:** Tools for discovering and analyzing application codebases.
-- **Integration metrics:** Exporters for GitHub and GitOps-related information.
-- **Unified operational interface:** A customized interface for inspecting deployed applications and KUBAPP components, presenting relevant status and operational information in an accessible way.
-- **Independent monitoring infrastructure:** Dedicated infrastructure and configuration for the `sys_monitor` system.
+### 3. Image Building and Publication
 
+After successful application validation and testing, the application source and required build data are collected for image construction.
 
-## 4. Codebase and Execution Logic
+Docker image building and inspection take place in a separate, less-restricted container environment with the permissions required for image operations. This remains distinct from the restricted environment used for developer-controlled application commands.
 
-KUBAPP's execution layer contains the automation and control logic that coordinates application discovery, CI, infrastructure and GitOps operations, platform state management, and maintenance tasks. It connects the platform's individual components through reusable scripts and workflows, keeping operational logic organized and maintainable.
+Following successful image construction and inspection, KUBAPP collects additional build information, including Software Bills of Materials (SBOMs) and other application metadata. These records are saved as platform state, and the resulting application images are published to Docker Hub for downstream delivery.
 
-### The execution layer covers:
-- **Application discovery and CI:** Application detection, configuration validation, dependency handling, build execution, and CI checks.
-- **Platform and AWS cleanup:** Automation for cleaning up platform resources and AWS infrastructure.
-- **Drift detection:** Detection of differences between the declared and actual GitOps or Terraform state.
-- **Shared automation:** Reusable helpers supporting platform operations.
-- **GitHub integration:** Automation for GitHub-related workflows and operations.
-- **GitOps operations:** Scripts for managing GitOps workflows and Argo CD interactions.
-- **Platform registry and reconciliation:** Logic for maintaining platform registry information and coordinating reconciliation.
-- **Execution documentation:** Documentation for understanding and maintaining the platform's automation.
+### 4. Platform Build and Deployment Data Preparation
 
+The platform build stage collects successful application build results and organizes the information required by downstream deployment workflows.
 
+It retrieves the published image references and associated application metadata, then generates the deployment data required for each qualified application. These outputs are stored under `gitops/state/`, establishing a defined interface between application CI and the GitOps deployment stages.
 
-## 5. Workflow Orchestration
+### 5. GitOps Deployment and Kubernetes Reconciliation
 
-KUBAPP uses GitHub Actions to orchestrate CI/CD and platform automation workflows. These workflows connect repository events, infrastructure operations, application delivery, and supporting maintenance tasks, coordinating the execution of platform logic.
+Deployment is initiated through a separate, manually triggered workflow.
 
-### The workflow layer covers:
-- **CI/CD orchestration:** Workflows that coordinate application validation and delivery.
-- **Platform automation:** Workflows for infrastructure and other platform operations.
-- **Workflow documentation:** Documentation covering workflow behavior and operational procedures.
+Applications are discovered through the GitOps registry under `gitops/registry`. For each eligible application, the deployment workflow collects its prepared deployment data and updates the relevant Helm templates and application configuration under `gitops/envs/apps/`.
 
+Argo CD observes the changes in Git and reconciles the declared desired state with the Kubernetes API. Kubernetes then schedules, runs, and continuously manages the deployed application workloads according to their specifications.
 
-## 6. Application Onboarding
+### 6. Application Management, Monitoring, and Platform Visibility
 
-KUBAPP provides a dedicated workspace for application services, separating application source code and configuration from the platform's infrastructure and operational logic. This allows applications to be onboarded through a consistent structure while KUBAPP handles the relevant validation, build, and delivery processes.
-Application workspaces are organized under `docker/`:
+KUBAPP combines Kubernetes-native monitoring with an independent monitoring and alerting system to provide visibility across the application lifecycle.
 
-```text
-docker/
-├── <application>/
-├── ...
-```
+Prometheus and Grafana provide monitoring coverage for Kubernetes resources and supporting infrastructure. Argo CD provides visibility into GitOps synchronization and application deployment health.
 
-### The onboarding layer supports:
-- **Application organization:** Separate workspaces for individual applications and services.
-- **Application discovery and validation:** Detection and validation of application configuration and runtime requirements.
-- **Standardized delivery:** Integration with KUBAPP's CI/CD and GitOps workflows.
-- **Independent application development:** Keeping application-specific files separate from the platform's core infrastructure and automation.
+Beyond these responsibilities, the external `sys_monitor/` system provides additional operational awareness across KUBAPP and its deployed applications. Its monitoring scope includes:
 
+- **Application health:** Visibility into the operational health of deployed applications beyond basic workload and deployment status.
+- **Database operations:** Monitoring of the KUBAPP database and its operational condition.
+- **GitHub activity:** Visibility into relevant repository events and integration activity.
+- **GitOps metrics:** Monitoring of important GitOps operational metrics not already adequately covered by Kubernetes monitoring or the Argo CD application interface.
+- **Platform codebase integrity:** Analysis of KUBAPP's own codebase, including integrity statistics across its files and scripts.
+- **Platform component health:** Awareness of the operational state of major internal and external platform components.
 
-## 7. Setup and Platform Preparation
+This separation avoids unnecessarily duplicating monitoring responsibilities while extending visibility into areas that Kubernetes and Argo CD do not independently cover.
 
-KUBAPP provides setup and preparation automation to help users configure the required cloud infrastructure, repository integrations, credentials, and tooling. Additional scripts prepare changes for delivery by validating platform configuration, protecting secrets, checking application definitions, and coordinating Git operations before changes are pushed.
-
-### The setup and preparation layer covers:
-- **Initial platform setup:** Coordinating AWS bootstrap, repository discovery, GitHub configuration, and Terraform backend preparation.
-- **Identity and integration configuration:** Setting up GitHub Actions variables and secrets, AWS access through configured roles, and GitHub App integration.
-- **Secret preparation:** Installing and configuring SOPS and AGE tooling, preparing encryption keys, and integrating secret handling into the activation workflow.
-- **Tooling and cost estimation:** Preparing required command-line tools and configuring Infracost integration.
-- **Pre-push activation:** Preparing Git state, validating configuration, encrypting secrets, checking GitOps configuration, and optionally validating applications before finalizing Git operations.
-- **Application configuration validation:** Checking application CI definitions, runtime configuration, file paths, commands, required secrets, and health-check settings before delivery.
-- **Operational guidance:** Providing setup instructions and workflow documentation to help users configure and operate KUBAPP.
-
+Together, these stages establish a delivery lifecycle in which KUBAPP discovers heterogeneous applications, validates and securely processes their inputs, builds and publishes application images, prepares deployment data, coordinates GitOps delivery, and maintains operational visibility across both deployed applications and the platform itself.
