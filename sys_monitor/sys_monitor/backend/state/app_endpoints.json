@@ -1,0 +1,21 @@
+{
+  "env": "dev",
+  "updated_at": "2026-11-14T17:50:36.530824+00:00",
+  "apps": {
+    "node-app": {
+      "url": "https://node-app.rundailytest.online",
+      "readiness": "https://node-app.rundailytest.online/health",
+      "liveness": "https://node-app.rundailytest.online/health"
+    },
+    "python-cicd": {
+      "url": "https://python-cicd.rundailytest.online",
+      "readiness": "https://python-cicd.rundailytest.online/health",
+      "liveness": "https://python-cicd.rundailytest.online/health"
+    },
+    "kubwatch": {
+      "url": "https://kubwatch.rundailytest.online",
+      "readiness": "https://kubwatch.rundailytest.online/health/",
+      "liveness": "https://kubwatch.rundailytest.online/health/"
+    }
+  }
+}

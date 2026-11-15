@@ -10,7 +10,7 @@ Security, Cost efficiency, and Operational adaptability guide the platform's des
 ## What It Does
 
 - Automates cloud infrastructure provisioning and management through Infrastructure as Code.
-- Validates, builds, packages, and deploys applications through CI/CD and GitOps.
+- Validates, builds, packages, secures and deploys applications through CI/CD and GitOps.
 - Provides monitoring and observability for operational visibility.
 - Keeps platform operations maintainable, debuggable, and extensible.
 - Applies defined policies and execution boundaries to automated operations.

@@ -1,0 +1,59 @@
+{
+  "module": "architecture",
+  "script": "architecture.sh",
+  "status": "completed",
+  "timestamp": "2026-08-19T09:42:49Z",
+
+  "summary": {
+    "total_checked": 224,
+    "issues_found": 7,
+    "critical": 0,
+    "warnings": 7,
+    "architecture_score": 79
+  },
+
+  "findings": [
+  {
+    "severity": "warning",
+    "type": "boundary",
+    "area": "sys_monitor",
+    "message": "cloud logic inside monitoring layer"
+  },
+  {
+    "severity": "warning",
+    "type": "boundary",
+    "area": "sys_monitor",
+    "message": "cloud logic inside monitoring layer"
+  },
+  {
+    "severity": "warning",
+    "type": "boundary",
+    "area": "sys_monitor",
+    "message": "cloud logic inside monitoring layer"
+  },
+  {
+    "severity": "warning",
+    "type": "boundary",
+    "area": "sys_monitor",
+    "message": "cloud logic inside monitoring layer"
+  },
+  {
+    "severity": "warning",
+    "type": "boundary",
+    "area": "sys_monitor",
+    "message": "cloud logic inside monitoring layer"
+  },
+  {
+    "severity": "warning",
+    "type": "duplication",
+    "area": "scripts",
+    "message": "multiple validate tools detected"
+  },
+  {
+    "severity": "warning",
+    "type": "coupling",
+    "area": "scripts",
+    "message": "iac coupling detected"
+  }
+]
+}
