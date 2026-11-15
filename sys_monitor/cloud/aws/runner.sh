@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 ACTION="${1:-plan}"
@@ -11,10 +10,23 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 AWS_DIR="$ROOT/sys_monitor/cloud/aws"
 SECRETS_SCRIPT="$AWS_DIR/main/secrets.sh"
-if  [[ "$ACTION" == "encrypt" ]]; then
-  echo "Encrypting sys_monitor Secrets and SSM Vars"
-  bash "$SECRETS_SCRIPT" encrypt
-  exit 1
+HELPERS="$AWS_DIR/helpers.sh"
+SETUP_ENV="$AWS_DIR/setup.tmp.env"
+MAIN_DIR="$AWS_DIR/main"
+STORE_DIR="$AWS_DIR/store"
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "Required file not found: $HELPERS"
+    exit 1
+fi
+
+source "$HELPERS"
+if [[ "$ACTION" == "encrypt" ]]; then
+    echo "Encrypting sys_monitor Secrets and SSM Vars"
+    bash "$SECRETS_SCRIPT" encrypt
+    echo ""
+    encrypt_setup_env
+    exit 0
 fi
 
 for each in "${AUTO2[@]}"; do
@@ -24,15 +36,17 @@ for each in "${AUTO2[@]}"; do
     fi
 done
 
+decrypt_setup_env || exit 1
+trap 'rm -f "$SETUP_ENV"' EXIT
 
-SETUP_ENV="$AWS_DIR/setup.env"
-HELPERS="$AWS_DIR/helpers.sh"
+source "$SETUP_ENV"
+
+#SETUP_ENV="$AWS_DIR/setup.env"
 INIT_TF="$AWS_DIR/init_tf.sh"
 PROVIDER="$AWS_DIR/manage_provider.sh"
+
 BOOTSTRAP_DIR="$AWS_DIR/bootstrap"
 IDENTITY_ROOT="$BOOTSTRAP_DIR/identity"
-MAIN_DIR="$AWS_DIR/main"
-STORE_DIR="$AWS_DIR/store"
 
 for file in "$SETUP_ENV" "$HELPERS" "$INIT_TF" "$PROVIDER" "$SECRETS_SCRIPT"; do
     if [[ ! -f "$file" ]]; then
@@ -45,11 +59,13 @@ source "$SETUP_ENV"
 source "$HELPERS"
 source "$SECRETS_SCRIPT"
 
+
 validate_config() {
     : "${ENV:?❌ ENV is required}"
     : "${CLUSTER_MODE:?❌ CLUSTER_MODE is required}"
     : "${SYS_MONITOR_ACCOUNT_ID:?❌ SYS_MONITOR_ACCOUNT_ID is required}"
     : "${KUBAPP_ACCOUNT_ID:?❌ KUBAPP_ACCOUNT_ID is required}"
+    : "${DATABASE_ACCOUNT_ID:?❌ DATABASE_ACCOUNT_ID is required}"
     : "${PROFILE_LOCAL:?❌ PROFILE_LOCAL is required}"
     : "${PROFILE_CROSS:?❌ PROFILE_CROSS is required}"
     : "${REGION:?❌ REGION is required}"
@@ -78,8 +94,11 @@ derive_config() {
 
     STATE_BUCKET="kubapp-sys-monitor-${STATE_ACCOUNT_ID}"
     STATE_KEY="$ENV/sys-monitor-runtime/tf-state"
-
-    export AWS_PROFILE="$STATE_PROFILE"
+    if [[ "${GITHUB_ACTIONS:-false}" != "true" ]]; then
+        export AWS_PROFILE="$STATE_PROFILE"
+    else
+        unset AWS_PROFILE
+    fi
 }
 
 
@@ -90,6 +109,7 @@ show_config() {
     echo "ACTION       : $ACTION"
     echo "CLUSTER MODE : $CLUSTER_MODE"
     echo "ACCOUNT      : $STATE_ACCOUNT_ID"
+    echo "DATABASE     : $DATABASE_ACCOUNT_ID"
     echo "PROFILE      : $STATE_PROFILE"
     echo "REGION       : $REGION"
     echo "STATE BUCKET : $STATE_BUCKET"
@@ -99,6 +119,10 @@ show_config() {
     line
 }
 
+
+# --------------------------------------------------
+# IDENTITY / ASSUME ROLE
+# --------------------------------------------------
 
 run_identity() {
     line
@@ -113,6 +137,7 @@ run_identity() {
             -var="profile=$STATE_PROFILE" \
             -var="account_id=$STATE_ACCOUNT_ID" \
             -var="kubapp_account_id=$KUBAPP_ACCOUNT_ID" \
+            -var="database_account_id=$DATABASE_ACCOUNT_ID" \
             -var="access_mode=$ACCESS_MODE" \
             -var="region=$REGION"
 
@@ -121,6 +146,7 @@ run_identity() {
             -var="profile=$STATE_PROFILE" \
             -var="account_id=$STATE_ACCOUNT_ID" \
             -var="kubapp_account_id=$KUBAPP_ACCOUNT_ID" \
+            -var="database_account_id=$DATABASE_ACCOUNT_ID" \
             -var="access_mode=$ACCESS_MODE" \
             -var="region=$REGION"
     else
@@ -159,6 +185,7 @@ destroy_identity() {
             -var="profile=$STATE_PROFILE" \
             -var="account_id=$STATE_ACCOUNT_ID" \
             -var="kubapp_account_id=$KUBAPP_ACCOUNT_ID" \
+            -var="database_account_id=$DATABASE_ACCOUNT_ID" \
             -var="access_mode=$ACCESS_MODE" \
             -var="region=$REGION"
 
@@ -167,6 +194,7 @@ destroy_identity() {
             -var="profile=$STATE_PROFILE" \
             -var="account_id=$STATE_ACCOUNT_ID" \
             -var="kubapp_account_id=$KUBAPP_ACCOUNT_ID" \
+            -var="database_account_id=$DATABASE_ACCOUNT_ID" \
             -var="access_mode=$ACCESS_MODE" \
             -var="region=$REGION"
     else
@@ -186,6 +214,54 @@ destroy_identity() {
 }
 
 
+get_instance_id() {
+    echo "Initializing sys_monitor Terraform state..." >&2
+    run_init >&2
+    local instance_id
+
+    instance_id=$(terraform -chdir="$MAIN_DIR" output -raw instance_id) || {
+        echo "ERROR: Unable to retrieve sys_monitor instance ID." >&2
+        return 1
+    }
+
+    if [[ ! "$instance_id" =~ ^i-[a-f0-9]+$ ]]; then
+        echo "ERROR: Invalid EC2 instance ID: $instance_id" >&2
+        return 1
+    fi
+    printf '%s\n' "$instance_id"
+}
+
+role() {
+    run_identity
+}
+
+
+role_destroy() {
+    if [[ "$AUTO" != "true" ]]; then
+        echo
+        echo "⚠️  This will destroy the sys_monitor identity resources."
+        echo
+        echo "Account : $STATE_ACCOUNT_ID"
+        echo "Profile : $STATE_PROFILE"
+        echo "Mode    : $CLUSTER_MODE"
+        echo
+
+        read -rp "Type 'yes' to continue: " CONFIRM
+
+        if [[ "$CONFIRM" != "yes" ]]; then
+            echo "❌ Identity destroy cancelled."
+            return 1
+        fi
+    fi
+
+    destroy_identity
+}
+
+
+# --------------------------------------------------
+# PROVIDER / MAIN TERRAFORM
+# --------------------------------------------------
+
 activate_provider() {
     source "$PROVIDER"
     manage_provider "$CLUSTER_MODE"
@@ -197,11 +273,16 @@ run_init() {
     echo "TERRAFORM INIT: MAIN"
     line
 
-    terraform -chdir="$MAIN_DIR" init -reconfigure \
-        -backend-config="bucket=$STATE_BUCKET" \
-        -backend-config="key=$STATE_KEY" \
-        -backend-config="region=$REGION" \
-        -backend-config="profile=$STATE_PROFILE"
+    local backend_args=(
+        "-backend-config=bucket=$STATE_BUCKET"
+        "-backend-config=key=$STATE_KEY"
+        "-backend-config=region=$REGION"
+    )
+
+    if [[ "${GITHUB_ACTIONS:-false}" != "true" ]]; then
+        backend_args+=("-backend-config=profile=$STATE_PROFILE")
+    fi
+    terraform -chdir="$MAIN_DIR" init -reconfigure "${backend_args[@]}"
 }
 
 
@@ -210,7 +291,7 @@ run_plan() {
     run_init
     terraform_validate "$MAIN_DIR"
     load_secrets
-    terraform_vars plan  #-refresh-only
+    terraform_vars plan
 }
 
 
@@ -219,6 +300,7 @@ run_apply() {
     run_init
     terraform_validate "$MAIN_DIR"
     load_secrets
+
     terraform_vars plan
 
     if terraform_vars apply --auto-approve; then
@@ -254,6 +336,7 @@ run_destroy() {
     run_init
     terraform_validate "$MAIN_DIR"
     load_secrets
+
     terraform_vars plan -destroy
 
     if terraform_vars destroy --auto-approve; then
@@ -267,25 +350,32 @@ run_destroy() {
 }
 
 
+# --------------------------------------------------
+# RUNTIME ACTIONS
+# --------------------------------------------------
+
 apply() {
-    run_identity
-    #"$INIT_TF" apply
     run_apply
 }
 
 
 plan() {
-    run_identity
     run_plan
 }
 
 
 destroy() {
     run_destroy
-    destroy_identity
-    #"$INIT_TF" apply
 }
 
+full() {
+    run_identity
+    run_apply
+}
+
+# --------------------------------------------------
+# INITIALIZATION
+# --------------------------------------------------
 
 validate_config
 derive_config
@@ -300,25 +390,51 @@ check_directories \
 check_aws
 
 
+# --------------------------------------------------
+# ACTION DISPATCH
+# --------------------------------------------------
+
 case "$ACTION" in
+    full)
+        full
+        ;;
+
+    role)
+        role
+        ;;
+
+    role-destroy)
+        role_destroy
+        ;;
+
     apply)
         apply
         ;;
+
     plan)
         plan
         ;;
+
     destroy)
         destroy
+        ;;
+
+    instance-id)
+        get_instance_id
         ;;
     *)
         echo "❌ Unknown action: $ACTION"
         echo
         echo "Usage:"
         echo "  ./runner.sh encrypt"
-        echo "  ./runner.sh apply"
+        echo "  ./runner.sh full"
+        echo "  ./runner.sh role"
+        echo "  ./runner.sh role-destroy"
         echo "  ./runner.sh plan"
+        echo "  ./runner.sh apply"
         echo "  ./runner.sh destroy"
         echo "  ./runner.sh destroy -y"
+        echo "  ./runner.sh role-destroy -y"
         exit 1
         ;;
 esac

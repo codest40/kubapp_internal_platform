@@ -28,6 +28,10 @@ data "aws_iam_instance_profile" "sys_monitor" {
   name = "sys-monitor-ec2-profile"
 }
 
+resource "terraform_data" "sys_monitor_deploy" {
+  triggers_replace = timestamp()
+}
+
 resource "aws_instance" "sys_monitor" {
   ami                         = data.aws_ami.amazon_linux.id
   instance_type               = "t3.small"
@@ -51,6 +55,14 @@ resource "aws_instance" "sys_monitor" {
   })
   tags = {
     Name = "sys-monitor"
+  }
+  lifecycle {
+    replace_triggered_by = [
+      terraform_data.sys_monitor_deploy
+    ]
+    #  ignore_changes = [
+    #    ami
+    #  ]
   }
   depends_on = [
     aws_ssm_parameter.backend_env,

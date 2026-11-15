@@ -1,3 +1,7 @@
+output "instance_id" {
+  value = aws_instance.sys_monitor.id
+}
+
 output "eks_account_id" {
   value = local.eks_account_id
 }

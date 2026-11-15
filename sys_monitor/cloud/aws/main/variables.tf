@@ -2,10 +2,6 @@ variable "profile" {
   type = string
 }
 
-variable "account_id" {
-  type = string
-}
-
 variable "env" {
   type = string
 }
@@ -13,6 +9,15 @@ variable "env" {
 variable "region" {
   type    = string
   default = "us-east-1"
+}
+
+variable "account_id" {
+  type = string
+}
+
+variable "database_account_id" {
+  description = "Database AWS account ID"
+  type        = string
 }
 
 variable "kubapp_account_id" {

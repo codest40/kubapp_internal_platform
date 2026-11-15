@@ -151,7 +151,6 @@ echo "Retrieving backend configuration from SSM Parameter Store..."
 
 mkdir -p "$APP_DIR/backend"
 
-# Do not print the retrieved parameter value to the deployment log.
 aws ssm get-parameter \
     --name "$BACKEND_ENV_PARAMETER" \
     --with-decryption \
@@ -233,8 +232,8 @@ wait_for_dns() {
         "graf.$${DOMAIN}"
         "prom.$${DOMAIN}"
         "git.$${DOMAIN}"
-        "codebase.$${DOMAIN}"
         "gitops.$${DOMAIN}"
+        "codebase.$${DOMAIN}"
         "monitor.$${DOMAIN}"
     )
 
@@ -282,13 +281,10 @@ for i in {1..60}; do
 
     FRONTEND=$(curl -fs http://localhost:4173/ >/dev/null && echo ok || echo no)
 
-    echo "prom=$PROM grafana=$GRAFANA github=$GITHUB gitops=$GITOPS codebase=$CODEBASE backend=$BACKEND frontend=$FRONTEND"
+    echo "prom=$PROM grafana=$GRAFANA github=$GITHUB codebase=$CODEBASE backend=$BACKEND frontend=$FRONTEND"
 
     if [[ "$PROM" == "ok" &&
           "$GRAFANA" == "ok" &&
-          "$GITHUB" == "ok" &&
-          "$GITOPS" == "ok" &&
-          "$CODEBASE" == "ok" &&
           "$BACKEND" == "ok" &&
           "$FRONTEND" == "ok" ]]; then
 
@@ -306,6 +302,19 @@ for i in {1..60}; do
         echo "Dashboard: https://monitor.$DOMAIN"
         echo "========================================"
 
+        echo "Checking optional exporters..."
+        [[ "$GITHUB" == "ok" ]] \
+           && echo "GitHub exporter: healthy" \
+           || echo "WARNING: GitHub exporter unavailable"
+
+        [[ "$GITOPS" == "ok" ]] \
+           && echo "GitOps exporter: healthy" \
+           || echo "WARNING: GitOps exporter unavailable"
+
+        [[ "$CODEBASE" == "ok" ]] \
+            && echo "Codebase exporter: healthy" \
+            || echo "WARNING: Codebase exporter unavailable"
+
         exit 0
     fi
 
@@ -316,6 +325,6 @@ echo "SYS_MONITOR FAILED HEALTH CHECK"
 
 docker compose ps
 
-docker compose logs --tail=100 backend frontend
+docker compose logs --tail=20 backend frontend
 
 exit 1

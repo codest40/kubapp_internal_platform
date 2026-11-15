@@ -70,7 +70,6 @@ derive_config() {
     fi
 
     STATE_BUCKET="kubapp-sys-monitor-${STATE_ACCOUNT_ID}"
-
     export AWS_PROFILE="$STATE_PROFILE"
 }
 

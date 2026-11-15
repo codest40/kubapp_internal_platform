@@ -1,6 +1,5 @@
 terraform {
   required_version = "~> 1.14"
-
   backend "local" {}
 }
 
@@ -9,8 +8,20 @@ provider "aws" {
   profile = var.profile
 }
 
+
 locals {
   admin_iam_arn = "arn:aws:iam::${var.account_id}:user/${var.profile}"
+  is_db_state_local = (
+    var.kubapp_account_id == var.database_account_id
+  )
+  sys_monitor_allows_these_roles = (
+    local.is_db_state_local ?
+    ["arn:aws:iam::${var.kubapp_account_id}:role/kubapp-reads-sys-monitor-state-role"]
+    : [
+      "arn:aws:iam::${var.kubapp_account_id}:role/kubapp-reads-sys-monitor-state-role",
+      "arn:aws:iam::${var.database_account_id}:role/sys-monitor-cross-account-role-db"
+    ]
+  )
 }
 
 resource "aws_iam_role" "sys_monitor" {
@@ -31,11 +42,9 @@ resource "aws_iam_role" "sys_monitor" {
       },
       {
         Effect = "Allow"
-
         Principal = {
           AWS = local.admin_iam_arn
         }
-
         Action = "sts:AssumeRole"
       }
     ]
@@ -47,7 +56,6 @@ resource "aws_iam_user_policy" "assume_sys_monitor_role" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-
     Statement = [{
       Effect   = "Allow"
       Action   = "sts:AssumeRole"
@@ -61,7 +69,6 @@ resource "aws_iam_role_policy" "terraform_management" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-
     Statement = [{
       Sid    = "AllowIAMRoleManagement"
       Effect = "Allow"
@@ -84,14 +91,14 @@ resource "aws_iam_role_policy" "terraform_management" {
 # KUBAPP SYS_MONITOR STATE READER
 ########################################3
 resource "aws_iam_role" "kubapp_reads_sys_monitor_state" {
-  name = "allow-kubapp-read-sys-monitor-state-role"
+  name = "allow-kubapp-and-db-read-sys-monitor-state-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
       Principal = {
-        AWS = "arn:aws:iam::${var.kubapp_account_id}:role/kubapp-reads-sys-monitor-state-role"
+        AWS = local.sys_monitor_allows_these_roles
       }
       Action = "sts:AssumeRole"
     }]
@@ -123,6 +130,10 @@ variable "account_id" {
 }
 
 variable "kubapp_account_id" {
+  type = string
+}
+
+variable "database_account_id" {
   type = string
 }
 

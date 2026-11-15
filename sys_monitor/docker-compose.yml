@@ -50,6 +50,15 @@ services:
     environment:
       - EVENT_DB_PATH=/data/github_events.db
 
+  gitops-exporter:
+    build: ./exporters/gitops
+    container_name: gitops-exporter
+    ports:
+      - "9105:9105"
+    env_file:
+      - ./.env
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -102,15 +111,6 @@ services:
       - github-db:/data
     environment:
       - EVENT_DB_PATH=/data/github_events.db
-
-  gitops-exporter:
-    build: ./exporters/gitops
-    container_name: gitops-exporter
-    ports:
-      - "9105:9105"
-    env_file:
-      - ./.env
-    restart: unless-stopped
 
   codebase-exporter:
     build: ./codebase/runners

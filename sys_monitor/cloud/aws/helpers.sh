@@ -88,21 +88,23 @@ terraform_has_state() {
     terraform -chdir="$dir" state list 2>/dev/null | grep -q .
 }
 
-
-terraform_vars() {
-    TF_VAR_account_id="$STATE_ACCOUNT_ID" \
-    TF_VAR_kubapp_account_id="$KUBAPP_ACCOUNT_ID" \
-    TF_VAR_env="$ENV" \
-    TF_VAR_region="$REGION" \
-    TF_VAR_profile="$STATE_PROFILE" \
-    TF_VAR_cluster_mode="$CLUSTER_MODE" \
-    TF_VAR_instance_type="$SYS_MONITOR_INSTANCE_TYPE" \
-    TF_VAR_access_mode="$ACCESS_MODE" \
-    TF_VAR_key_name="$SYS_MONITOR_KEY_NAME" \
-    TF_VAR_ssh_cidr="${SSH_CIDR:-}" \
-    terraform -chdir="$MAIN_DIR" "$@"
+tf_needed_vars() {
+    local name value
+    local all_vars=()
+    while IFS='=' read -r name value; do
+        [[ -z "$name" || "$name" == \#* ]] && continue
+        name="${name#SYS_MONITOR_}"
+        name="${name,,}"
+        all_vars+=("TF_VAR_${name}=${value}")
+    done < "$SETUP_ENV"
+    all_vars+=("TF_VAR_profile=$STATE_PROFILE")
+    all_vars+=("TF_VAR_ssh_cidr=${SSH_CIDR:-}")
+    env "${all_vars[@]}" terraform -chdir="$MAIN_DIR" "$@"
 }
 
+terraform_vars() {
+    tf_needed_vars "$@"
+}
 
 terraform_init() {
     local dir="$1"
@@ -118,3 +120,54 @@ terraform_validate() {
     terraform -chdir="$dir" validate
 }
 
+
+encrypt_setup_env() {
+    local input="$AWS_DIR/setup.env"
+    local output="$STORE_DIR/secrets/setup.env.enc"
+
+    if [[ ! -f "$input" ]]; then
+        echo "ERROR: setup.env not found: $input"
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$output")"
+
+    echo "Encrypting sys_monitor configuration..."
+
+    if ! sops -e \
+        --filename-override "$STORE_DIR/secrets/setup.env" \
+        --input-type dotenv \
+        --output "$output" \
+        "$input"; then
+
+        echo "ERROR: Failed to encrypt setup.env"
+        return 1
+    fi
+
+    echo "setup.env encrypted."
+    echo "Output: $output"
+}
+
+
+decrypt_setup_env() {
+    local input="$STORE_DIR/secrets/setup.env.enc"
+    local output="$AWS_DIR/setup.tmp.env"
+
+    if [[ ! -f "$input" ]]; then
+        echo "ERROR: Encrypted setup file not found: $input"
+        return 1
+    fi
+
+    echo "Decrypting sys_monitor configuration..."
+
+    if ! sops -d \
+        --input-type dotenv \
+        --output-type dotenv \
+        "$input" > "$output"; then
+
+        rm -f "$output"
+        echo "ERROR: Failed to decrypt setup.env"
+        return 1
+    fi
+    echo "Configuration decrypted."
+}
