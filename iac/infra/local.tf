@@ -15,6 +15,7 @@ locals {
   name_prefix     = "${var.project}-${var.env}"
   cluster_name    = "${var.cluster_name}-${var.env}"
   tf_state_bucket = "kubapp-tf-state-${local.account_id}"
+  db_state_bucket = "kubapp-database-tf-state-${local.account_id}"
   main_domain     = data.terraform_remote_state.dns.outputs.domains[var.main_domain]["domain"]
   dns_zone_id     = data.terraform_remote_state.dns.outputs.domains[var.main_domain]["zone_id"]
 
@@ -133,16 +134,21 @@ locals {
   sys_monitor_account_user = split("/", local.admin_sys_monitor_arn)[1]
 
   # Network
-  vpc_cidr             = "10.0.0.0/16"
-  azs                  = ["us-east-1a", "us-east-1b"]
-  public_subnets       = ["10.0.1.0/24", "10.0.2.0/24"]
-  private_subnets      = ["10.0.11.0/24", "10.0.12.0/24"]
-  private_subnets_cidr = ["10.0.11.0/24", "10.0.12.0/24"]
+  vpc_cidr           = "10.0.0.0/16"
+  azs                = ["us-east-1a", "us-east-1b"]
+  public_subnets     = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnets    = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+  private_subnet_azs = ["us-east-1a", "us-east-1b", "us-east-1a"]
+
+  workload_private_subnet_indices  = [0, 1]
+  rds_proxy_private_subnet_indices = local.db_mode_enabled ? [2, 1] : []
+  private_subnets_cidr             = local.private_subnets
 
   # Database
-  database_account_arn = "arn:aws:iam::${var.cross_account_ids["db"]}:role/${var.database_role}"
+  database_account_arn            = "arn:aws:iam::${var.cross_account_ids["db"]}:role/${var.database_role}"
+  kubapp_reads_db_state_role_name = var.kubapp_visit_db_role
   db_lets_kubapp_read_state_arn = (
-    "arn:aws:iam::${var.cross_account_ids["db"]}:role/${var.db_kubapp_reciever_role}"
+    "arn:aws:iam::${var.cross_account_ids["db"]}:role/${var.db_recieve_kubapp_role}"
   )
 
   db_mode_enabled = (
@@ -168,13 +174,13 @@ locals {
   allow_kubapp_read_db_state = var.allow_kubapp_read_db_state
 
   # Sys_monitor VPC peering
-  sys_monitor_peering_enabled         = var.sys_monitor_peering_enabled
+  sys_monitor_peering_enabled         = var.enable_sys_monitor_cross_account
   allow_kubapp_read_sys_monitor_state = var.allow_kubapp_read_sys_monitor_state
   sys_monitor_state_bucket            = "kubapp-sys-monitor-${var.cross_account_ids["monitor"]}"
   sys_monitor_state_key               = "${var.env}/sys-monitor-runtime/tf-state"
 
   sys_monitor_state_reader_role_arn = (
-    "arn:aws:iam::${var.cross_account_ids["monitor"]}:role/allow-kubapp-read-sys-monitor-state-role"
+    "arn:aws:iam::${var.cross_account_ids["monitor"]}:role/allow-kubapp-and-db-read-sys-monitor-state-role"
   )
   sys_monitor_enabled = var.sys_monitor_enabled
   sys_monitor_cross_mode_enabled = (

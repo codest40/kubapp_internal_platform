@@ -1,0 +1,20 @@
+env               = "YOUR_ENVIRONMENT"
+kubapp_account_id = "YOUR_KUBAPP_AWS_ACCOUNT_ID"
+
+engine_version = "16"
+instance_class = "db.t3.micro"
+
+allocated_storage     = 20
+max_allocated_storage = 100
+
+storage_type       = "gp3"
+iops               = null
+storage_throughput = null
+
+backup_retention_period = 7
+
+backup_window      = "03:00-04:00"
+maintenance_window = "sun:04:00-sun:05:00"
+
+database_name   = "YOUR_DATABASE_NAME"
+master_username = "YOUR_DATABASE_MASTER_USERNAME"

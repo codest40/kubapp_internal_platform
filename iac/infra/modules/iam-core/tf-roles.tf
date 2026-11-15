@@ -3,8 +3,9 @@
 ############################################
 
 resource "aws_iam_role" "sys_monitor_terraform" {
-  name = "sys-monitor-terraform-role"
+  count = var.sys_monitor_enabled ? 1 : 0
 
+  name = "sys-monitor-terraform-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
 
@@ -26,9 +27,10 @@ resource "aws_iam_role" "sys_monitor_terraform" {
 }
 
 resource "aws_iam_role_policy" "sys_monitor_terraform" {
-  name = "sys-monitor-terraform"
-  role = aws_iam_role.sys_monitor_terraform.id
+  count = var.sys_monitor_enabled ? 1 : 0
 
+  name = "sys-monitor-terraform"
+  role = aws_iam_role.sys_monitor_terraform[0].id
   policy = jsonencode({
     Version = "2012-10-17"
 

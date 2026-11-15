@@ -128,12 +128,12 @@ resource "aws_subnet" "private" {
   count             = length(var.private_subnets)
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnets[count.index]
-  availability_zone = var.azs[count.index]
+  availability_zone = var.private_subnet_azs[count.index]
   tags = merge(var.tags, {
     Name                                = "${var.name}-private-${count.index}"
     resource-type                       = "subnet"
     subnet-type                         = "private"
-    az                                  = var.azs[count.index]
+    az                                  = var.private_subnet_azs[count.index]
     routing                             = "nat"
     "kubernetes.io/cluster/${var.name}" = "shared"
     "kubernetes.io/role/internal-elb"   = "1"
@@ -229,7 +229,7 @@ resource "aws_route_table_association" "private" {
   count     = length(var.private_subnets)
   subnet_id = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private[
-    var.azs[count.index]
+    var.private_subnet_azs[count.index]
   ].id
 }
 

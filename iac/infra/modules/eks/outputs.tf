@@ -31,5 +31,5 @@ output "admin_role_arn" {
 }
 
 output "sys_monitor_rbac_group_name" {
-  value = one(aws_eks_access_entry.sys_monitor.kubernetes_groups)
+  value = var.sys_monitor_enabled ? one(flatten(aws_eks_access_entry.sys_monitor[*].kubernetes_groups)) : null
 }

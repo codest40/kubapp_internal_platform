@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Used to manage infra only when SYS_MONITOR_ENABLED automatic discovery is needed
+
 arg="${1:-plan}"
 SYS_MONITOR_ENABLED="$(./helpers/check_sys_monitor.sh)" || SYS_MONITOR_ENABLED="false"
 

@@ -34,14 +34,13 @@ resource "aws_db_instance" "database" {
 
   maintenance_window = var.maintenance_window
 
-  deletion_protection = local.deletion_protection
-  skip_final_snapshot = local.skip_final_snapshot
+  deletion_protection       = local.deletion_protection
+  skip_final_snapshot       = local.skip_final_snapshot
+  final_snapshot_identifier = local.final_snapshot_identifier
 
-  publicly_accessible = false
-
+  publicly_accessible        = false
   auto_minor_version_upgrade = true
-
-  copy_tags_to_snapshot = true
+  copy_tags_to_snapshot      = true
 
   tags = {
     Name    = "${local.project}-${local.env}-database"

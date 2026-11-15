@@ -21,8 +21,13 @@ module "network" {
   vpc_cidr     = local.vpc_cidr
   azs          = local.azs
 
-  public_subnets   = local.public_subnets
-  private_subnets  = local.private_subnets
+  public_subnets     = local.public_subnets
+  private_subnets    = local.private_subnets
+  private_subnet_azs = local.private_subnet_azs
+
+  workload_private_subnet_indices  = local.workload_private_subnet_indices
+  rds_proxy_private_subnet_indices = local.rds_proxy_private_subnet_indices
+
   vpc_flow_log_arn = module.logging.log_group_arns["vpc_flow_log"]
   tags = merge(local.common_tags, {
     layer = "network"
@@ -78,6 +83,7 @@ module "iam_core" {
   cluster_name                 = local.cluster_name
   account_id                   = local.account_id
   tf_state_bucket              = local.tf_state_bucket
+  db_state_bucket              = local.db_state_bucket
   fargate_log_group_arn        = module.logging.log_group_arns["fargate_logs"]
   enable_cross_account         = local.enable_cross_account
   cross_account_role_arn       = local.cross_account_role_arn
@@ -90,6 +96,8 @@ module "iam_core" {
   enable_db_cross_account      = local.enable_db_cross_account
   database_account_arn         = local.database_account_arn
   zone_id                      = local.dns_zone_id
+
+  sys_monitor_enabled = local.sys_monitor_enabled
 
   tags = merge(local.common_tags, {
     resource-type = "iam"
@@ -136,6 +144,7 @@ module "eks" {
   enable_cross_account                   = local.enable_cross_account
   sys_monitor_ec2_role_arn               = local.sys_monitor_ec2_role_arn
   sys_monitor_rbac_group_name            = local.sys_monitor_rbac_group_name
+  sys_monitor_enabled                    = local.sys_monitor_enabled
 
   github_iam_arn = local.admin_github_arn
   admin_iam_arn  = local.admin_kubapp_arn
@@ -223,10 +232,11 @@ module "database" {
   kubapp_private_route_table_ids = module.network.private_route_table_ids
   kubapp_vpc_cidr                = local.vpc_cidr
 
-  database_account_id           = var.cross_account_ids["db"]
-  database_state_bucket         = local.database_state_bucket
-  database_state_key            = local.database_state_key
-  db_lets_kubapp_read_state_arn = local.db_lets_kubapp_read_state_arn
+  database_account_id             = var.cross_account_ids["db"]
+  database_state_bucket           = local.database_state_bucket
+  database_state_key              = local.database_state_key
+  db_lets_kubapp_read_state_arn   = local.db_lets_kubapp_read_state_arn
+  kubapp_reads_db_state_role_name = local.kubapp_reads_db_state_role_name
 
   admin_kubapp_arn = local.admin_kubapp_arn
   admin_github_arn = local.admin_github_arn

@@ -7,6 +7,10 @@ variable "tf_state_bucket" {
   type = string
 }
 
+variable "db_state_bucket" {
+  type = string
+}
+
 variable "database_account_arn" {
   type = string
 }
@@ -58,6 +62,10 @@ variable "account_id" {
 
 variable "zone_id" {
   type = string
+}
+
+variable "sys_monitor_enabled" {
+  type = bool
 }
 
 variable "tags" {

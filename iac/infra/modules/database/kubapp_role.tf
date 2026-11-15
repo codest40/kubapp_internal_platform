@@ -21,18 +21,15 @@ resource "aws_iam_user_policy" "admin_assume_db_state_role" {
 }
 
 resource "aws_iam_role" "kubapp_db_state_reader" {
-  name = "kubapp-reads-db-state-role"
+  name = var.kubapp_reads_db_state_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-
     Statement = [{
       Effect = "Allow"
-
       Principal = {
         AWS = [var.admin_kubapp_arn, var.admin_github_arn]
       }
-
       Action = "sts:AssumeRole"
     }]
   })
@@ -49,10 +46,9 @@ resource "aws_iam_role_policy" "kubapp_db_state_assume" {
     Version = "2012-10-17"
 
     Statement = [{
-      Effect = "Allow"
-
+      Effect   = "Allow"
       Action   = "sts:AssumeRole"
-      Resource = "arn:aws:iam::${var.database_account_id}:role/db-lets-kubapp-read-state-role"
+      Resource = var.db_lets_kubapp_read_state_arn
     }]
   })
 }

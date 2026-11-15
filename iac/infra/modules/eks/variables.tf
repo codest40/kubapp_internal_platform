@@ -10,6 +10,10 @@ variable "admin_iam_arn" {
   type = string
 }
 
+variable "sys_monitor_enabled" {
+  type = bool
+}
+
 variable "sys_monitor_ec2_role_arn" {
   description = "ARN used by the sys_monitor EC2 instance (same account)"
   type        = string

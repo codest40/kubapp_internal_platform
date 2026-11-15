@@ -51,7 +51,7 @@ jobs:
   deploy:
     if: ${{ inputs.mode == 'full' || inputs.mode == 'build' }}
     needs: build
-    uses: ./.github/workflows/add_new_app.yml
+    uses: ./.github/workflows/deploy.yml
     with:
       env: ${{ inputs.env }}
     secrets: inherit

@@ -7,7 +7,18 @@ output "public_subnet_ids" {
 }
 
 output "private_subnet_ids" {
-  value = aws_subnet.private[*].id
+  value = [
+    for index in var.workload_private_subnet_indices :
+    aws_subnet.private[index].id
+  ]
+}
+
+output "rds_proxy_private_subnet_ids" {
+  description = "Private subnets selected for RDS Proxy across Availability Zones"
+  value = [
+    for index in var.rds_proxy_private_subnet_indices :
+    aws_subnet.private[index].id
+  ]
 }
 
 output "nat_public_ip" {

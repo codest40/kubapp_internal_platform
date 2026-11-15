@@ -11,6 +11,10 @@ variable "db_account_id" {
   type = string
 }
 
+variable "sys_monitor_account_id" {
+  type = string
+}
+
 variable "github_role" {
   type = string
 }

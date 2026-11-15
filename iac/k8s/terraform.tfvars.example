@@ -1,0 +1,10 @@
+account_id  = "YOUR_AWS_ACCOUNT_ID"
+region      = "YOUR_AWS_REGION"
+env         = "YOUR_ENVIRONMENT"
+
+alert_email          = "YOUR_ALERT_EMAIL_ADDRESS"
+alert_email_password = "YOUR_ALERT_EMAIL_PASSWORD"
+
+# secret_file   = "gitops/state/secrets.json"
+# secret_path   = "gitops/secrets"
+# secret_script = "scripts/gitops/apply_secrets.py"

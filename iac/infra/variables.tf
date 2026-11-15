@@ -82,7 +82,11 @@ variable "db_enabled" {
   default = false
 }
 
-variable "db_kubapp_reciever_role" {
+variable "db_recieve_kubapp_role" {
+  type = string
+}
+
+variable "kubapp_visit_db_role" {
   type = string
 }
 
@@ -91,7 +95,7 @@ variable "allow_kubapp_read_db_state" {
   default = false
 }
 
-variable "sys_monitor_peering_enabled" {
+variable "enable_sys_monitor_cross_account" {
   type    = bool
   default = false
 }

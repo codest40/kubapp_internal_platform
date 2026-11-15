@@ -55,9 +55,11 @@ validate_config() {
     : "${ENV:?❌ ENV is required}"
     : "${DATABASE_MODE:?❌ DATABASE_MODE is required}"
     : "${KUBAPP_ACCOUNT_ID:?❌ KUBAPP_ACCOUNT_ID is required}"
+    : "${SYS_MONITOR_ACCOUNT_ID:?❌ SYS_MONITOR_ACCOUNT_ID is required}"
     : "${REGION:?❌ REGION is required}"
     : "${GITHUB_ROLE:?❌ GITHUB_ROLE is required}"
     : "${SYS_MONITOR_CROSS_MODE_ENABLED:? ❌ SYS_MONITOR_CROSS_MODE_ENABLED is required}"
+    : "${SYS_MONITOR_ENABLED:? ❌ SYS_MONITOR_ENABLED is required}"
 
     if [[ "$DATABASE_MODE" != "local" && "$DATABASE_MODE" != "cross" ]]; then
         echo "❌ Invalid DATABASE_MODE: $DATABASE_MODE"
@@ -107,9 +109,11 @@ show_config() {
     line
 }
 
+
 prepare_secrets() {
     source "$DATABASE_DIR/secrets.sh"
 }
+
 
 show_init_msg() {
     line
@@ -117,13 +121,30 @@ show_init_msg() {
     line
 }
 
+
+run_output() {
+    local output_name
+
+    if [[ $# -eq 0 ]]; then
+        echo "ERROR: At least one Terraform output name is required." >&2
+        return 1
+    fi
+
+    run_init >&2 || return 1
+
+    for output_name in "$@"; do
+        terraform -chdir="$DATABASE_DIR" output -raw "$output_name"
+    done
+}
+
+
 run_init() {
     if [[ "$RUN" == "laptop" ]]; then
-      terraform -chdir="$DATABASE_DIR" init -reconfigure \
-        -backend-config="bucket=$STATE_BUCKET" \
-        -backend-config="key=$STATE_KEY" \
-        -backend-config="region=$REGION" \
-        -backend-config="profile=$STATE_PROFILE"
+        terraform -chdir="$DATABASE_DIR" init -reconfigure \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="key=$STATE_KEY" \
+            -backend-config="region=$REGION" \
+            -backend-config="profile=$STATE_PROFILE"
     else
         terraform -chdir="$DATABASE_DIR" init -reconfigure \
             -backend-config="bucket=$STATE_BUCKET" \
@@ -132,10 +153,18 @@ run_init() {
     fi
 }
 
+
+# --------------------------------------------------
+# ASSUME ROLE MANAGEMENT
+# --------------------------------------------------
+
 init_assume() {
     local ASSUME_KEY
+
     ASSUME_KEY="$(terraform -chdir="$ASSUME_BOOT" output -raw state_key 2>/dev/null || true)"
+
     [[ -z "$ASSUME_KEY" ]] && echo "Assume key Retrieval failed. check ASSUME BOOT" && exit 1
+
     terraform -chdir="$ASSUME_DIR" init -reconfigure \
         -backend-config="bucket=$STATE_BUCKET" \
         -backend-config="key=$ASSUME_KEY" \
@@ -143,37 +172,52 @@ init_assume() {
         -backend-config="profile=$STATE_PROFILE"
 }
 
+
 prepare_assume_role() {
     if ! validate_assume; then
-      return
+        return
     fi
+
     echo "============================================="
     echo "Preparing Assume Role Creations..."
     echo "============================================="
+
     init_assume
     terraform_validate "$ASSUME_DIR"
+
     terraform -chdir="$ASSUME_DIR" apply \
         -var="profile=$STATE_PROFILE" \
         -var="github_role=$GITHUB_ROLE" \
         -var="db_account_id=$DATABASE_ACCOUNT_ID" \
         -var="kubapp_account_id=$KUBAPP_ACCOUNT_ID" \
+        -var="sys_monitor_account_id=$SYS_MONITOR_ACCOUNT_ID" \
         --auto-approve
 }
 
+
 destroy_assume_role() {
     if ! validate_assume; then
-      return
+        return
     fi
+
     echo "Destroying Assume Role Creations..."
+
     init_assume
     terraform_validate "$ASSUME_DIR"
+
     terraform -chdir="$ASSUME_DIR" destroy \
         -var="profile=$STATE_PROFILE" \
         -var="github_role=$GITHUB_ROLE" \
         -var="db_account_id=$DATABASE_ACCOUNT_ID" \
         -var="kubapp_account_id=$KUBAPP_ACCOUNT_ID" \
+        -var="sys_monitor_account_id=$SYS_MONITOR_ACCOUNT_ID" \
         --auto-approve
 }
+
+
+# --------------------------------------------------
+# DATABASE TERRAFORM
+# --------------------------------------------------
 
 run_plan() {
     manage_network "$DATABASE_MODE"
@@ -183,6 +227,7 @@ run_plan() {
     prepare_secrets
     terraform_validate "$DATABASE_DIR"
     tf_needed_vars
+
     TF_VAR_state_bucket="$STATE_BUCKET" \
     TF_VAR_state_key="$STATE_KEY" \
     terraform -chdir="$DATABASE_DIR" plan
@@ -191,6 +236,7 @@ run_plan() {
 
 run_apply() {
     manage_network "$DATABASE_MODE"
+
     show_init_msg
     run_init
 
@@ -198,6 +244,7 @@ run_apply() {
     terraform_validate "$DATABASE_DIR"
 
     tf_needed_vars
+
     TF_VAR_state_bucket="$STATE_BUCKET" \
     TF_VAR_state_key="$STATE_KEY" \
     terraform -chdir="$DATABASE_DIR" plan
@@ -234,6 +281,7 @@ run_destroy() {
     prepare_secrets
 
     tf_needed_vars
+
     TF_VAR_state_bucket="$STATE_BUCKET" \
     TF_VAR_state_key="$STATE_KEY" \
     terraform -chdir="$DATABASE_DIR" plan -destroy
@@ -245,6 +293,45 @@ run_destroy() {
 }
 
 
+# --------------------------------------------------
+# ACTION FUNCTIONS
+# --------------------------------------------------
+
+role() {
+    prepare_assume_role
+}
+
+
+role_destroy() {
+    destroy_assume_role
+}
+
+
+plan() {
+    run_plan
+}
+
+
+apply() {
+    run_apply
+}
+
+
+destroy() {
+    run_destroy
+}
+
+
+full() {
+    prepare_assume_role
+    run_apply
+}
+
+
+# --------------------------------------------------
+# INITIALIZATION
+# --------------------------------------------------
+
 validate_config
 derive_config
 show_config
@@ -252,42 +339,75 @@ show_config
 
 check_directories \
     "$DATABASE_DIR" \
-    "$STORE_DIR"  \
+    "$STORE_DIR" \
     "$ASSUME_DIR"
 
 check_aws
 
+
+# --------------------------------------------------
+# ACTION DISPATCH
+# --------------------------------------------------
+
 case "$ACTION" in
 
-    init)
-        run_init
+    encrypt)
+        source "$HELPERS"
+        encrypt_setup_env
+        ;;
+
+    role)
+        role
+        ;;
+
+    role-destroy)
+        role_destroy
         ;;
 
     plan)
-        prepare_assume_role
-        run_plan
+        role
+        plan
         ;;
 
     apply)
-        prepare_assume_role
-        run_apply
+        role
+        apply
         ;;
 
     destroy)
-        run_destroy
-        destroy_assume_role
+        role_destroy
+        destroy
+        ;;
+
+    full)
+        full
+        ;;
+
+    output)
+        shift
+        run_output "$@"
+        ;;
+
+    init)
+        run_init
         ;;
 
     *)
         echo "❌ Unknown action: $ACTION"
         echo
         echo "Usage:"
-        echo "  ./runner.sh init"
+        echo "  ./runner.sh encrypt"
+        echo "  ./runner.sh role"
+        echo "  ./runner.sh role-destroy"
         echo "  ./runner.sh plan"
         echo "  ./runner.sh apply"
         echo "  ./runner.sh destroy"
-        echo "  ./runner.sh destroy -y"
+        echo "  ./runner.sh full"
+        echo "  ./runner.sh init"
+        echo "  ./runner.sh output <name>"
         exit 1
         ;;
 
 esac
+
+delete_tmp_role

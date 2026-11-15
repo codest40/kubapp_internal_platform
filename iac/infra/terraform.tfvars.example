@@ -1,0 +1,41 @@
+main_domain       = "YOUR_DOMAIN"
+env               = "YOUR_ENVIRONMENT"
+region            = "YOUR_AWS_REGION"
+cluster_name      = "YOUR_CLUSTER_NAME"
+
+admin_kubapp      = "YOUR_KUBAPP_AWS_PROFILE"
+admin_sys_monitor = "YOUR_SYS_MONITOR_AWS_PROFILE"
+admin_visitor     = "YOUR_VISITOR_AWS_PROFILE"
+admin_github      = "YOUR_GITHUB_AWS_PROFILE"
+
+database_role          = "YOUR_DATABASE_TERRAFORM_ROLE"
+db_recieve_kubapp_role = "YOUR_DATABASE_KUBAPP_STATE_ACCESS_ROLE_NAME"
+kubapp_visit_db_role   = "YOUR_KUBAPP_DATABASE_STATE_ACCESS_ROLE_NAME"
+
+cross_account_ids = {
+  "monitor" = "YOUR_SYS_MONITOR_AWS_ACCOUNT_ID"
+  "db"      = "YOUR_DATABASE_AWS_ACCOUNT_ID"
+}
+
+enable_db_local_account    = true
+db_enabled                 = true
+allow_kubapp_read_db_state = true
+
+allow_kubapp_read_sys_monitor_state = true
+enable_sys_monitor_cross_account    = true
+sys_monitor_enabled                 = true
+
+log_groups = {
+  app_logs = {
+    retention = 1
+  },
+  audit_logs = {
+    retention = 3
+  },
+  cluster_logs = {
+    retention = 1
+  },
+  vpc_logs = {
+    retention = 1
+  }
+}

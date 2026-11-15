@@ -27,3 +27,19 @@ output "db_terraform_role_name" {
 output "db_terraform_role_arn" {
   value = aws_iam_role.db_terraform.arn
 }
+
+output "kubapp_read_db_state_role_name" {
+  value = aws_iam_role.kubapp_read_db_state.name
+}
+
+output "kubapp_read_db_state_role_arn" {
+  value = aws_iam_role.kubapp_read_db_state.arn
+}
+
+output "sys_monitor_read_db_state_role_arn" {
+  value = aws_iam_role.sys_monitor_read_db_state
+}
+
+output "sys_monitor_terraform_role" {
+  value = aws_iam_role.sys_monitor_terraform
+}

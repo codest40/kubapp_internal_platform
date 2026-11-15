@@ -53,7 +53,7 @@ on:
       llm_provider:
         description: LLM provider
         required: false
-        default: google
+        default: ollama
         type: choice
         options:
           - inherit
@@ -81,6 +81,7 @@ jobs:
       OLLAMA_MODELS: ${{ github.workspace }}/.ollama/models
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL || '' }}
       GOOGLE_MODEL: ${{ vars.GOOGLE_MODEL || 'gemini-3.8-flash' }}
+      SONAR_ENABLED: ${{ vars.SONAR_ENABLED || 'true' }}
 
     steps:
       - name: Check out repository
@@ -124,6 +125,27 @@ jobs:
           bash scripts/ci/check_python.sh
           python -m pip install --upgrade pip
           python -m pip install httpx PyYAML "mcp==2.3.0"
+          echo "CHECKING NODE INFO"
+          node --version
+          npm --version
+          npm ls eslint minimatch @eslint/config-array @eslint/eslintrc || true
+
+      - name: Install SonarScanner CLI
+        run: |
+          set -euo pipefail
+
+          SCANNER_VERSION="8.0.1.6346"
+          SCANNER_ARCHIVE="sonar-scanner-cli-${SCANNER_VERSION}-linux-x64.zip"
+
+          wget -q \
+            "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ARCHIVE}"
+
+          sudo unzip -q "$SCANNER_ARCHIVE" -d /opt/
+
+          sudo ln -sfn \
+            "/opt/sonar-scanner-${SCANNER_VERSION}-linux-x64/bin/sonar-scanner" \
+            /usr/local/bin/sonar-scanner
+          sonar-scanner --version
 
       - name: Prepare selected LLM provider
         env:
@@ -169,6 +191,9 @@ jobs:
           OLLAMA_MODELS: "${{ env.OLLAMA_MODELS }}"
           DOCKER_USER: "${{ secrets.DOCKER_USER }}"
           DOCKER_PASS: "${{ secrets.DOCKER_PASS }}"
+          SONAR_ENABLED: "${{ env.SONAR_ENABLED }}"
+          SONAR_HOST_URL: "https://sonar.rundailytest.site"
+          SONAR_TOKEN: "squ_e4f5754b87013e4db20c6af7fcaa4d381390bfc3"
           STRICT_MODE: "${{ env.STRICT_MODE }}"
           FAIL_MODE: "${{ env.FAIL_MODE }}"
           ENV: "${{ env.ENV }}"

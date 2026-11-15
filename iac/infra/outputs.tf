@@ -151,6 +151,11 @@ output "private_subnet_ids" {
   value = module.network.private_subnet_ids
 }
 
+output "rds_proxy_private_subnet_ids" {
+  description = "Private subnet IDs selected for RDS Proxy"
+  value       = module.network.rds_proxy_private_subnet_ids
+}
+
 output "kubapp_db_cross_account_role_Visitor" {
   value = local.enable_db_cross_account ? local.database_account_arn : null
 }

@@ -82,3 +82,8 @@ variable "sys_monitor_cross_mode_enabled" {
   type    = bool
   default = false
 }
+
+variable "sys_monitor_enabled" {
+  type    = bool
+  default = false
+}

@@ -34,6 +34,7 @@ resource "aws_eks_access_policy_association" "from_laptop" {
 }
 
 resource "aws_eks_access_entry" "sys_monitor" {
+  count         = var.sys_monitor_enabled ? 1 : 0
   cluster_name  = aws_eks_cluster.this.name
   principal_arn = var.sys_monitor_ec2_role_arn
   type          = "STANDARD"

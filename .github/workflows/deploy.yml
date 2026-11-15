@@ -214,8 +214,22 @@ jobs:
           RUN: cicd
         run: |
             set -euo pipefail
-            bash runner.sh init
-            DB_HOST=$(terraform output -raw database_endpoint 2>/dev/null || true)
+            OUTPUTS=$(bash runner.sh output database_proxy_endpoint) || {
+                echo "❌ DB OUTPUTS Not Retrieved from terraform"
+                exit 1
+            }
+            #DB_HOST="$(printf '%s\n' "$OUTPUTS" | tail -n 1)"
+            DB_HOST="$(printf '%s\n' "$OUTPUTS" | tail -n 1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+            if [[ ! "$DB_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+                echo "Database proxy endpoint contains invalid characters."
+                echo "DB_HOST: $DB_HOST"
+                echo "==================================================="
+                if [[ "$DB_HOST" == **curl** ]]; then
+                  echo "Curl in Terraform Error Msg. Check Your Network Connectivity"
+                fi
+                exit 1
+            fi
+            echo "DB_HOST=$DB_HOST"
             DB_HOST="$DB_HOST" \
             python "$GITHUB_WORKSPACE/scripts/platform/update_kubapp_db_secret_file.py"
 

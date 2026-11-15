@@ -34,6 +34,21 @@ variable "private_subnets" {
   type        = list(string)
 }
 
+variable "private_subnet_azs" {
+  description = "Availability Zone mapping for private subnets"
+  type        = list(string)
+}
+
+variable "rds_proxy_private_subnet_indices" {
+  description = "Private subnet indices selected for RDS Proxy, one per AZ"
+  type        = list(number)
+}
+
+variable "workload_private_subnet_indices" {
+  description = "Private subnet indices reserved for eks workloads"
+  type        = list(number)
+}
+
 variable "tags" {
   description = "Base ags for the network resources"
   type        = map(string)

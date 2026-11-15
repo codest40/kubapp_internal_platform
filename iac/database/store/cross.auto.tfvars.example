@@ -1,0 +1,4 @@
+admin_kubapp_role      = "YOUR_KUBAPP_AWS_PROFILE"
+admin_github_role      = "YOUR_GITHUB_AWS_PROFILE"
+kubapp_db_state_reader = "YOUR_KUBAPP_DATABASE_STATE_READER_ROLE"
+kubapp_db_role_name    = "YOUR_DATABASE_CROSS_ACCOUNT_ROLE"
