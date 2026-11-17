@@ -3,9 +3,9 @@ locals {
 
     {
 
-      ingress = {
-        description = "Network entry point (ingress)"
-        workload    = "ingress"
+      non_eks_app = {
+        description = "Network communication point for non-Eks workloads"
+        workload    = "sidecar apps"
 
         ingress = [
           {
@@ -41,7 +41,7 @@ locals {
             from_port  = var.from_port_ec2_app
             to_port    = var.to_port_ec2_app
             protocol   = "tcp"
-            source_sgs = ["ingress"]
+            source_sgs = ["non_eks_app"]
           }
         ]
 
@@ -64,7 +64,7 @@ locals {
             from_port  = var.from_port_fargate_app
             to_port    = var.to_port_fargate_app
             protocol   = "tcp"
-            source_sgs = ["ingress"]
+            source_sgs = ["non_eks_app"]
           }
         ]
 

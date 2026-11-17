@@ -195,7 +195,7 @@ It creates the **Security Group definitions** consumed by the `security` module.
 
 The current definitions include:
 
-### `ingress`
+### `non_eks_apps`
 
 The external entry-point Security Group.
 
@@ -225,7 +225,7 @@ TCP 3000
 Ingress is allowed from:
 
 ```text
-ingress
+non_eks_apps
 ```
 
 ### `fargate_app`
@@ -241,7 +241,7 @@ TCP 4000
 Ingress is allowed from:
 
 ```text
-ingress
+non_eks_apps
 ```
 
 ### `db_access`
@@ -303,7 +303,7 @@ This makes the module reusable without hardcoding individual Security Groups int
 The module currently provides workload-oriented groups such as:
 
 ```text
-ingress
+non_eks_apps
 ec2_app
 fargate_app
 db_access
